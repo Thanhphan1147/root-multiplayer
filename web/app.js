@@ -82,6 +82,58 @@ async function pickFaction(faction) {
   else if (r.data && r.data.error) { toast(r.data.error); }
 }
 
+// Copy text with a fallback that works on insecure origins and mobile Safari,
+// where navigator.clipboard is unavailable.
+async function copyText(text, btn, codeEl) {
+  let ok = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    }
+  } catch (e) { ok = false; }
+  if (!ok) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "0";
+      ta.style.left = "0";
+      ta.style.width = "1px";
+      ta.style.height = "1px";
+      ta.style.padding = "0";
+      ta.style.border = "none";
+      ta.style.outline = "none";
+      ta.style.boxShadow = "none";
+      ta.style.background = "transparent";
+      ta.style.fontSize = "12pt";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch (e) { ok = false; }
+  }
+  if (!ok && codeEl && window.getSelection) {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(codeEl);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) { /* ignore */ }
+  }
+  if (btn) {
+    const old = btn.dataset.label || btn.textContent;
+    btn.dataset.label = old;
+    btn.textContent = ok ? "copied" : "select & copy";
+    setTimeout(() => { btn.textContent = old; }, 1800);
+  }
+  return ok;
+}
+
 function toast(msg) {
   const el = document.getElementById("pendhint");
   if (el) { el.textContent = msg; setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 4000); }
@@ -584,7 +636,7 @@ function renderTokens(roomId, tokens) {
     const copy = document.createElement("button");
     copy.className = "btn ghost";
     copy.textContent = "copy";
-    copy.onclick = () => { if (navigator.clipboard) navigator.clipboard.writeText(link); copy.textContent = "copied"; };
+    copy.onclick = () => copyText(link, copy, code);
     row.innerHTML = `<span class="chip">seat ${i + 1}</span>`;
     row.append(code, copy);
     el.append(row);
@@ -662,10 +714,7 @@ function closeLogout() { logoutModal.hidden = true; }
 document.getElementById("logout").onclick = openLogout;
 document.getElementById("logoutcancel").onclick = closeLogout;
 document.getElementById("copytoken").onclick = () => {
-  const b = document.getElementById("copytoken");
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(token).then(() => { b.textContent = "copied"; setTimeout(() => { b.textContent = "copy"; }, 1500); });
-  }
+  copyText(token, document.getElementById("copytoken"), logoutToken);
 };
 document.getElementById("logoutconfirm").onclick = () => {
   closeLogout();
