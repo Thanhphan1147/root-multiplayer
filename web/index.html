@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<meta name="description" content="Root Machine Notation — correspondence multiplayer for the board game ROOT." />
+<title>Root Machine Notation · correspondence</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand">
+      <h1>Root Machine Notation</h1>
+      <p class="sub">correspondence multiplayer · base game</p>
+    </div>
+    <div class="turnbar" id="turnbar" aria-live="polite"></div>
+    <div class="header-controls">
+      <label title="Poll the server for changes">
+        <span class="dot" id="fetchdot"></span>
+        <input type="checkbox" id="autofetch" checked /> auto-fetch
+      </label>
+      <label>every
+        <input type="number" id="interval" min="2" max="120" value="5" /> s
+      </label>
+      <button id="leave" class="btn ghost" type="button">Leave</button>
+    </div>
+  </div>
+</header>
+
+<main class="bench">
+  <aside class="players" id="players" aria-label="Players"></aside>
+
+  <section class="boardwrap">
+    <div class="minimap" id="minimap" aria-label="Clearing graph" role="img"></div>
+    <div class="board" id="board" aria-label="Woodland map"></div>
+    <div class="boardfoot" id="boardfoot"></div>
+  </section>
+
+  <section class="rightcol">
+    <div class="panel">
+      <div class="panel-head"><h2 id="actionhead">Actions</h2><span class="hint" id="pendhint"></span></div>
+      <div class="actions" id="actions"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Logs</h2><span class="hint">human-readable events</span></div>
+      <ol class="log" id="log"></ol>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Annotations</h2><span class="hint">Root Machine Notation</span></div>
+      <ol class="rmn" id="rmn"></ol>
+    </div>
+  </section>
+</main>
+
+<footer class="sitefoot">
+  <span>Unofficial fan project — not affiliated with Leder Games.</span>
+  <a href="https://github.com/Thanhphan1147/root-multiplayer" target="_blank" rel="noopener">root-multiplayer</a>
+</footer>
+
+<!-- Landing: create or join -->
+<div class="overlay" id="landing" hidden>
+  <div class="card">
+    <h2>Play ROOT by correspondence</h2>
+    <p>Create a room and share one link per player, or paste a token you were given.
+       No accounts — each seat has its own secret token.</p>
+    <div class="row2">
+      <div>
+        <label>New room: players</label>
+        <select id="players">
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+        </select>
+      </div>
+      <div>
+        <label>Your name (optional)</label>
+        <input id="creatorname" placeholder="e.g. Cat" />
+      </div>
+    </div>
+    <button id="create" class="btn" type="button">Create room</button>
+    <label>Join an existing room</label>
+    <input id="jointoken" placeholder="paste your seat token" />
+    <button id="join" class="btn ghost" type="button">Join with token</button>
+    <p id="landingerr" style="color:var(--crimson)"></p>
+  </div>
+</div>
+
+<!-- Room created: distribute tokens -->
+<div class="overlay" id="created" hidden>
+  <div class="card">
+    <h2>Room <span id="createdid"></span> created</h2>
+    <p>Send each player their own link (or token). The link opens this client and signs them in.</p>
+    <div class="toklist" id="toklist"></div>
+    <button id="enter" class="btn" type="button">Enter my seat</button>
+  </div>
+</div>
+
+<!-- Lobby: pick a faction -->
+<div class="overlay" id="lobby" hidden>
+  <div class="card">
+    <h2>Choose your faction</h2>
+    <p id="lobbyinfo"></p>
+    <div class="factionpick" id="factionpick"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
