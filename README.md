@@ -20,7 +20,11 @@ secret token.
   supporters are masked, the deck is removed, and hidden outcomes (draws/deals)
   are scrubbed until they become public.
 - **Correspondence-friendly:** auto-fetch (configurable interval) plus `ETag` /
-  `304 Not Modified` so nothing is transferred when the state hasn't changed.
+  `304 Not Modified`, so nothing is transferred when the state hasn't changed.
+- **Opt-in live mode:** a "live" toggle opens a WebSocket that only *notifies*
+  when the room changes; the client still fetches over HTTP, so redaction and
+  caching stay in one place. If the socket drops it silently falls back to
+  polling.
 
 ## Run it
 
@@ -62,9 +66,12 @@ Set `RMN_SECRET` to a long random string in production (it signs every token).
 | `POST` | `/api/faction` | token | `{faction}` → pick a faction (lobby) |
 | `POST` | `/api/action` | token | `{id}` → apply a legal action (turn-checked) |
 | `GET` | `/api/export` | token | The room's `.rmn` log |
+| `GET` | `/api/ws` | token* | WebSocket change notifications (opt-in live mode) |
 | `GET` | `/api/health` | — | Liveness |
 
-Auth is `Authorization: Bearer <token>` (or `?token=`).
+Auth is `Authorization: Bearer <token>` (or `?token=`). The WebSocket accepts
+the token in a first frame (`{"token":"..."}`) or as `?token=`, and only pushes
+`{"type":"changed","seq":N}` nudges.
 
 ## Design notes
 

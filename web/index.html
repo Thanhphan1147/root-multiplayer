@@ -18,6 +18,10 @@
     </div>
     <div class="turnbar" id="turnbar" aria-live="polite"></div>
     <div class="header-controls">
+      <label title="Instant updates via WebSocket (falls back to polling)">
+        <span class="dot" id="livedot"></span>
+        <input type="checkbox" id="live" /> live
+      </label>
       <label title="Poll the server for changes">
         <span class="dot" id="fetchdot"></span>
         <input type="checkbox" id="autofetch" checked /> auto-fetch

@@ -32,6 +32,10 @@ let viewer = "";
 let autofetch = true;
 let intervalSec = 5;
 let timer = null;
+let ws = null;
+let wsLive = false;
+let wsConnected = false;
+let wsRetry = 0;
 
 function authHeaders(extra) {
   const h = Object.assign({}, extra || {});
@@ -504,10 +508,61 @@ const fetchDot = document.getElementById("fetchdot");
 function restartTimer() {
   if (timer) clearInterval(timer);
   timer = null;
+  if (wsConnected) { fetchDot.classList.add("on"); return; } // live push replaces polling
   if (!token || !autofetch) { fetchDot.classList.remove("on"); return; }
   fetchDot.classList.add("on");
   timer = setInterval(() => { fetchState(false).catch(() => {}); }, Math.max(2, intervalSec) * 1000);
 }
+
+// --- Live updates (opt-in WebSocket notification channel) ---
+const liveBox = document.getElementById("live");
+const liveDot = document.getElementById("livedot");
+
+function closeWS() {
+  wsConnected = false;
+  if (liveDot) liveDot.classList.remove("on");
+  if (ws) {
+    try { ws.onclose = null; ws.close(); } catch (e) { /* ignore */ }
+    ws = null;
+  }
+}
+
+function connectWS() {
+  if (!token || !wsLive) return;
+  closeWS();
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(proto + "//" + location.host + "/api/ws");
+  ws.onopen = () => { wsRetry = 0; try { ws.send(JSON.stringify({ token })); } catch (e) { /* ignore */ } };
+  ws.onmessage = (e) => {
+    let m;
+    try { m = JSON.parse(e.data); } catch (err) { return; }
+    if (m.type === "ready") {
+      wsConnected = true;
+      if (liveDot) liveDot.classList.add("on");
+      if (timer) { clearInterval(timer); timer = null; }
+    } else if (m.type === "changed") {
+      if (game && m.seq !== undefined && m.seq === game.seq) return;
+      fetchState(false).catch(() => {});
+    }
+  };
+  ws.onclose = () => {
+    wsConnected = false;
+    if (liveDot) liveDot.classList.remove("on");
+    ws = null;
+    restartTimer();
+    if (wsLive) {
+      wsRetry++;
+      setTimeout(connectWS, Math.min(30000, 1000 * Math.pow(2, wsRetry)));
+    }
+  };
+  ws.onerror = () => { try { ws.close(); } catch (e) { /* ignore */ } };
+}
+
+function setLive(on) {
+  wsLive = on;
+  if (on) { connectWS(); } else { closeWS(); restartTimer(); }
+}
+liveBox.onchange = () => setLive(liveBox.checked);
 autofetchBox.onchange = () => { autofetch = autofetchBox.checked; restartTimer(); };
 intervalInput.onchange = () => {
   intervalSec = Math.max(2, parseInt(intervalInput.value, 10) || 5);
@@ -542,12 +597,13 @@ function setToken(tok) {
   localStorage.setItem("rmn-token", tok);
   history.replaceState(null, "", location.pathname);
   hideOverlays();
-  fetchState(true).then(() => restartTimer());
+  fetchState(true).then(() => { if (wsLive) connectWS(); restartTimer(); });
 }
 
 function signOut(msg) {
   token = ""; game = null; etag = ""; viewer = "";
   localStorage.removeItem("rmn-token");
+  closeWS();
   if (timer) clearInterval(timer);
   timer = null;
   for (const id of ["players", "actions", "board", "minimap", "log", "rmn", "turnbar"]) {

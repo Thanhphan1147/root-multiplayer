@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Thanhphan1147/root-multiplayer/internal/room"
+	"github.com/gorilla/websocket"
 )
 
 func newTestServer(t *testing.T) *httptest.Server {
@@ -116,5 +119,52 @@ func TestEndToEnd(t *testing.T) {
 	_, _ = buf.ReadFrom(resp3.Body)
 	if !bytes.HasPrefix(buf.Bytes(), []byte("%RMN 3.0")) {
 		t.Fatalf("export should start with %%RMN 3.0: %q", buf.String())
+	}
+}
+
+func TestWebSocketNotify(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	_, created := do(t, ts, "POST", "/api/rooms", "", map[string]any{"players": 4}, nil)
+	tokensAny := created["tokens"].([]any)
+	tokens := make([]string, len(tokensAny))
+	for i, v := range tokensAny {
+		tokens[i] = v.(string)
+	}
+	for i, f := range []string{"MC", "ED", "WA", "VB"} {
+		do(t, ts, "POST", "/api/faction", tokens[i], map[string]any{"faction": f}, nil)
+	}
+
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/ws"
+	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if err := c.WriteJSON(map[string]string{"token": tokens[0]}); err != nil {
+		t.Fatal(err)
+	}
+	var ready map[string]any
+	if err := c.ReadJSON(&ready); err != nil {
+		t.Fatal(err)
+	}
+	if ready["type"] != "ready" {
+		t.Fatalf("expected ready, got %v", ready)
+	}
+
+	// Trigger an action; the socket should receive a "changed" nudge.
+	_, state := do(t, ts, "GET", "/api/state", tokens[0], nil, nil)
+	legal := state["legal"].([]any)
+	id := legal[0].(map[string]any)["id"].(string)
+	do(t, ts, "POST", "/api/action", tokens[0], map[string]any{"id": id}, nil)
+
+	_ = c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var changed map[string]any
+	if err := c.ReadJSON(&changed); err != nil {
+		t.Fatalf("expected a change notification: %v", err)
+	}
+	if changed["type"] != "changed" {
+		t.Fatalf("expected changed, got %v", changed)
 	}
 }

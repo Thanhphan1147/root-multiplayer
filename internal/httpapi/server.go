@@ -16,6 +16,15 @@ import (
 type Server struct {
 	Store  *room.Store
 	WebDir string
+	hubv   *Hub
+}
+
+// hub returns the WebSocket notification hub, creating it on first use.
+func (s *Server) hub() *Hub {
+	if s.hubv == nil {
+		s.hubv = NewHub()
+	}
+	return s.hubv
 }
 
 // Handler builds the mux.
@@ -27,6 +36,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/faction", s.faction)
 	mux.HandleFunc("/api/action", s.action)
 	mux.HandleFunc("/api/export", s.export)
+	mux.HandleFunc("/api/ws", s.ws)
 	if s.WebDir != "" {
 		mux.Handle("/", http.FileServer(http.Dir(s.WebDir)))
 	}
@@ -115,6 +125,7 @@ func (s *Server) faction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
+	s.broadcast(claims.Room, g)
 	s.respondState(w, s.payload(rm, g, claims.Seat))
 }
 
@@ -140,6 +151,7 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
+	s.broadcast(claims.Room, g)
 	s.respondState(w, s.payload(rm, g, claims.Seat))
 }
 
@@ -159,6 +171,15 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(text))
 }
 
+// broadcast nudges live clients that the room changed (seq included so they can
+// skip a fetch if they already have it).
+func (s *Server) broadcast(roomID string, g *root.Game) {
+	if g == nil {
+		return
+	}
+	s.hub().Broadcast(roomID, map[string]any{"type": "changed", "room": roomID, "seq": g.Seq})
+}
+
 func (s *Server) respondState(w http.ResponseWriter, payload map[string]any) {
 	w.Header().Set("ETag", etagOf(payload))
 	writeJSON(w, http.StatusOK, payload)
@@ -171,6 +192,7 @@ func (s *Server) payload(rm *room.Room, g *root.Game, seat int) map[string]any {
 		for k, v := range room.Redact(g, viewer) {
 			p[k] = v
 		}
+		p["seq"] = g.Seq
 	}
 	return p
 }
