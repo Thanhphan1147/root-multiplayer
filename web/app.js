@@ -616,7 +616,11 @@ function signOut(msg) {
 }
 
 document.getElementById("create").onclick = async () => {
-  const players = parseInt(document.getElementById("players").value, 10);
+  const players = parseInt(document.getElementById("playerCount").value, 10);
+  if (!Number.isInteger(players) || players < 2 || players > 4) {
+    document.getElementById("landingerr").textContent = "Choose 2 to 4 players.";
+    return;
+  }
   const name = document.getElementById("creatorname").value.trim();
   const r = await api("/api/rooms", { method: "POST", body: JSON.stringify({ players, names: name ? [name] : [] }) });
   if (r.data && r.data.room) {
