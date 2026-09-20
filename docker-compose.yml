@@ -12,5 +12,31 @@ services:
       - rmn-data:/app/data
     restart: unless-stopped
 
+  # Named Cloudflare Tunnel (production). Create the tunnel in the Zero Trust
+  # dashboard, add a public hostname pointing at http://root-multiplayer:8080,
+  # then put its token in CF_TUNNEL_TOKEN.
+  #   docker compose --profile cloudflare up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: root-multiplayer-tunnel
+    command: tunnel --no-autoupdate run --token ${CF_TUNNEL_TOKEN}
+    depends_on:
+      - root-multiplayer
+    restart: unless-stopped
+    profiles: ["cloudflare"]
+
+  # Throwaway Quick Tunnel for testing (random *.trycloudflare.com URL, no
+  # account needed). Read the URL from the logs.
+  #   docker compose --profile cloudflare-quick up -d
+  #   docker compose logs cloudflared-quick | grep trycloudflare
+  cloudflared-quick:
+    image: cloudflare/cloudflared:latest
+    container_name: root-multiplayer-quick
+    command: tunnel --no-autoupdate --url http://root-multiplayer:8080
+    depends_on:
+      - root-multiplayer
+    restart: unless-stopped
+    profiles: ["cloudflare-quick"]
+
 volumes:
   rmn-data:

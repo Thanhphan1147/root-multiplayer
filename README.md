@@ -37,6 +37,46 @@ RMN_SECRET="$(openssl rand -hex 32)" docker compose up -d --build
 
 Room data lives in the `rmn-data` volume.
 
+### HTTPS with Cloudflare Tunnel
+
+Serving over HTTPS is recommended: it makes the browser clipboard work on
+mobile (copy buttons) and is the normal way to expose a self-hosted server
+without opening ports. Cloudflare terminates TLS at its edge and `cloudflared`
+makes outbound connections, so no port-forwarding is required.
+
+**Named tunnel (production)**
+
+1. Add your domain to Cloudflare.
+2. In the Zero Trust dashboard go to **Networks → Tunnels → Create a tunnel** and
+   choose `cloudflared`. Copy the token from the install command.
+3. Add a **Public Hostname** route whose **Service URL** is
+   `http://root-multiplayer:8080` (the compose service name).
+4. Run it:
+
+   ```sh
+   cp .env.example .env      # set RMN_SECRET and CF_TUNNEL_TOKEN
+   docker compose --profile cloudflare up -d
+   ```
+
+5. Open `https://<your-hostname>`.
+
+Set the zone's SSL/TLS mode to **Full** (the tunnel handles edge-to-origin).
+WebSockets are supported, and the server's 25s pings keep the live socket alive.
+
+**Quick tunnel (testing only)**
+
+```sh
+docker compose --profile cloudflare-quick up -d
+docker compose logs cloudflared-quick | grep trycloudflare   # prints the URL
+```
+
+Quick tunnels need no account but are rate-limited and have no SLA — use them
+for a quick demo, not for a real game.
+
+Security notes: `RMN_SECRET` stays on the server and tokens now travel over
+HTTPS. Cloudflare Access can add an extra gate in front if you want one, and the
+client IP is available in `CF-Connecting-IP` if you add rate-limiting later.
+
 ### From source
 
 ```sh
