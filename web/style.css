@@ -59,7 +59,7 @@ body::before {
 .masthead {
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: 120; /* above the landing/lobby overlays so Log out is always reachable */
   width: 100%;
   border-bottom: 2px solid var(--line-strong);
   background: rgba(244, 238, 224, 0.94);
@@ -436,7 +436,7 @@ button:focus-visible, a:focus-visible, .clearing:focus-visible {
 /* Players drawer toggle (hidden on wide screens) */
 #toggleplayers { display: none; }
 /* Transparent click-catcher: closes the drawer without dimming the page. */
-.drawer-backdrop { position: fixed; inset: 0; z-index: 55; background: transparent; }
+.drawer-backdrop { position: fixed; inset: 0; z-index: 125; background: transparent; }
 
 /* ---------- Responsive ---------- */
 
@@ -464,7 +464,7 @@ button:focus-visible, a:focus-visible, .clearing:focus-visible {
     top: 0;
     left: 0;
     bottom: 0;
-    z-index: 60;
+    z-index: 130;
     width: min(340px, 88vw);
     display: flex;
     flex-direction: column;
@@ -563,3 +563,6 @@ button:focus-visible, a:focus-visible, .clearing:focus-visible {
 .banner { margin: 0.5rem 0; padding: 0.5rem 0.6rem; border: 1.5px solid var(--ed); border-radius: var(--radius);
   background: rgba(40,82,122,.08); font-family: var(--mono); font-size: 0.72rem; }
 .banner.you { border-color: var(--wa); background: rgba(79,107,74,.10); }
+
+#logoutmodal { z-index: 140; }
+#logoutmodal code { display: block; max-height: 8rem; overflow: auto; word-break: break-all; }

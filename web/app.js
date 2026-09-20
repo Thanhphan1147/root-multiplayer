@@ -601,6 +601,7 @@ function setToken(tok) {
 }
 
 function signOut(msg) {
+  closeLogout();
   token = ""; game = null; etag = ""; viewer = "";
   localStorage.removeItem("rmn-token");
   closeWS();
@@ -634,8 +635,41 @@ document.getElementById("join").onclick = () => {
   const tok = document.getElementById("jointoken").value.trim();
   if (tok) setToken(tok);
 };
-document.getElementById("leave").onclick = () => {
-  if (confirm("Leave this room? You can rejoin later with your token.")) signOut("");
+// --- Logout (always available) ---
+const logoutModal = document.getElementById("logoutmodal");
+const logoutToken = document.getElementById("logouttoken");
+const logoutWrap = document.getElementById("logouttokenwrap");
+const logoutWarn = document.getElementById("logoutwarn");
+
+function openLogout() {
+  if (token) {
+    logoutWarn.textContent =
+      "This removes your seat token from this browser. If you haven't saved it " +
+      "somewhere, you won't be able to rejoin this seat — the token will be lost forever.";
+    logoutToken.textContent = token;
+    logoutWrap.hidden = false;
+    document.getElementById("logoutconfirm").hidden = false;
+  } else {
+    logoutWarn.textContent = "No seat token is stored in this browser.";
+    logoutToken.textContent = "";
+    logoutWrap.hidden = true;
+    document.getElementById("logoutconfirm").hidden = true;
+  }
+  logoutModal.hidden = false;
+}
+function closeLogout() { logoutModal.hidden = true; }
+
+document.getElementById("logout").onclick = openLogout;
+document.getElementById("logoutcancel").onclick = closeLogout;
+document.getElementById("copytoken").onclick = () => {
+  const b = document.getElementById("copytoken");
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(token).then(() => { b.textContent = "copied"; setTimeout(() => { b.textContent = "copy"; }, 1500); });
+  }
+};
+document.getElementById("logoutconfirm").onclick = () => {
+  closeLogout();
+  signOut("Logged out. Save your token if you want to rejoin this seat.");
 };
 
 // --- Boot ---

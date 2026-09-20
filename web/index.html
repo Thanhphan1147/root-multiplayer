@@ -29,7 +29,7 @@
       <label>every
         <input type="number" id="interval" min="2" max="120" value="5" /> s
       </label>
-      <button id="leave" class="btn ghost" type="button">Leave</button>
+      <button id="logout" class="btn ghost" type="button">Log out</button>
     </div>
   </div>
 </header>
@@ -108,6 +108,27 @@
     <h2>Choose your faction</h2>
     <p id="lobbyinfo"></p>
     <div class="factionpick" id="factionpick"></div>
+  </div>
+</div>
+
+<!-- Logout: warn, show the token, then clear it -->
+<div class="overlay" id="logoutmodal" hidden>
+  <div class="card">
+    <h2>Log out</h2>
+    <p id="logoutwarn">This removes your seat token from this browser. If you
+       haven't saved it somewhere, you won't be able to rejoin this seat — the
+       token will be lost forever.</p>
+    <div id="logouttokenwrap">
+      <label>Your seat token</label>
+      <div class="tokrow">
+        <code id="logouttoken"></code>
+        <button id="copytoken" class="btn ghost" type="button">copy</button>
+      </div>
+    </div>
+    <div style="display:flex; gap:.5rem; margin-top:.9rem; flex-wrap:wrap;">
+      <button id="logoutconfirm" class="btn" type="button">Log out anyway</button>
+      <button id="logoutcancel" class="btn ghost" type="button">Cancel</button>
+    </div>
   </div>
 </div>
 
