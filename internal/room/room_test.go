@@ -228,47 +228,7 @@ func TestListOpenRooms(t *testing.T) {
 }
 
 func TestPendingPlayerActsDuringBattle(t *testing.T) {
-	s := newStore(t)
-	rm, _, err := s.Create(2, nil, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := s.PickFaction(rm.ID, 0, "MC"); err != nil {
-		t.Fatal(err)
-	}
-	started, g, err := s.PickFaction(rm.ID, 1, "ED")
-	if err != nil {
-		t.Fatal(err)
-	}
-	seatOf := map[string]int{}
-	for i, st := range started.Seats {
-		seatOf[st.Faction] = i
-	}
-	// Drive setup to completion; each step is submitted by the right seat.
-	for g.SetupMode {
-		acts := g.LegalActions()
-		if len(acts) == 0 {
-			t.Fatal("setup stalled")
-		}
-		if _, _, err := s.ApplyAction(rm.ID, seatOf[string(g.Current)], acts[0].ID); err != nil {
-			t.Fatalf("setup %s: %v", acts[0].ID, err)
-		}
-		_, g, _ = s.Load(rm.ID)
-	}
-
-	// Force a battle where MC is the turn player but ED must assign the hits.
-	g.Current = root.MC
-	g.Clearings["C1"].Warriors[root.MC] = 3
-	g.Clearings["C1"].Warriors[root.ED] = 3
-	g.Battle = &root.BattleState{
-		Clearing: "C1", Attacker: root.MC, Defender: root.ED,
-		Stage: root.StageHits, HitSide: root.ED, Remaining: 1, AtkHits: 1,
-	}
-	g.Pending = &root.Pending{Kind: root.PendingBattleHits, Player: root.ED}
-	if err := s.Save(started, g); err != nil {
-		t.Fatal(err)
-	}
-
+	s, rm, g, _ := startedBattle(t)
 	var hit *root.Action
 	acts := g.LegalActions()
 	for i := range acts {
@@ -286,4 +246,67 @@ func TestPendingPlayerActsDuringBattle(t *testing.T) {
 	if _, _, err := s.ApplyAction(rm.ID, 1, hit.ID); err != nil {
 		t.Fatalf("the pending player should be allowed to act: %v", err)
 	}
+}
+
+func TestPendingChoiceRedaction(t *testing.T) {
+	_, _, g, _ := startedBattle(t)
+	// ED is the pending player while MC owns the turn.
+	ed := Redact(g, "ED")
+	if acts, _ := ed["legal"].([]root.Action); len(acts) == 0 {
+		t.Fatal("the pending player should receive legal actions")
+	}
+	if p, _ := ed["pending"].(*root.Pending); p == nil || p.Player != root.ED {
+		t.Fatalf("the pending player should see the pending choice: %v", ed["pending"])
+	}
+	mc := Redact(g, "MC")
+	if acts, _ := mc["legal"].([]root.Action); len(acts) != 0 {
+		t.Fatalf("a non-acting player should get no legal actions, got %v", acts)
+	}
+	if p, _ := mc["pending"].(*root.Pending); p == nil || p.Player != root.ED {
+		t.Fatalf("everyone should see whose choice it is: %v", mc["pending"])
+	}
+}
+
+// startedBattle returns a started 2-player MC-vs-ED game forced into a battle
+// where MC owns the turn but ED must assign the hits.
+func startedBattle(t *testing.T) (*Store, *Room, *root.Game, map[string]int) {
+	t.Helper()
+	s := newStore(t)
+	rm, _, err := s.Create(2, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.PickFaction(rm.ID, 0, "MC"); err != nil {
+		t.Fatal(err)
+	}
+	started, g, err := s.PickFaction(rm.ID, 1, "ED")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seatOf := map[string]int{}
+	for i, st := range started.Seats {
+		seatOf[st.Faction] = i
+	}
+	for g.SetupMode {
+		acts := g.LegalActions()
+		if len(acts) == 0 {
+			t.Fatal("setup stalled")
+		}
+		if _, _, err := s.ApplyAction(rm.ID, seatOf[string(g.Current)], acts[0].ID); err != nil {
+			t.Fatalf("setup %s: %v", acts[0].ID, err)
+		}
+		_, g, _ = s.Load(rm.ID)
+	}
+	g.Current = root.MC
+	g.Clearings["C1"].Warriors[root.MC] = 3
+	g.Clearings["C1"].Warriors[root.ED] = 3
+	g.Battle = &root.BattleState{
+		Clearing: "C1", Attacker: root.MC, Defender: root.ED,
+		Stage: root.StageHits, HitSide: root.ED, Remaining: 1, AtkHits: 1,
+	}
+	g.Pending = &root.Pending{Kind: root.PendingBattleHits, Player: root.ED}
+	if err := s.Save(started, g); err != nil {
+		t.Fatal(err)
+	}
+	return s, started, g, seatOf
 }

@@ -576,5 +576,39 @@ button:focus-visible, a:focus-visible, .clearing:focus-visible {
   background: rgba(40,82,122,.08); font-family: var(--mono); font-size: 0.72rem; }
 .banner.you { border-color: var(--wa); background: rgba(79,107,74,.10); }
 
+/* ---------- Turn indicator ---------- */
+
+.turnbanner {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.5rem clamp(0.8rem, 2vw, 1.6rem);
+  border-bottom: 2px solid var(--line-strong);
+  background: var(--paper-2);
+  font-family: var(--mono);
+  text-align: center;
+}
+.turnbanner[hidden] { display: none; }
+.turnbanner .tb-who { font-size: 0.95rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; }
+.turnbanner .tb-label { font-size: 0.68rem; color: var(--ink-soft); }
+.turnbanner.MC { border-bottom-color: var(--mc); }
+.turnbanner.MC .tb-who { color: var(--mc); }
+.turnbanner.ED { border-bottom-color: var(--ed); }
+.turnbanner.ED .tb-who { color: var(--ed); }
+.turnbanner.WA { border-bottom-color: var(--wa); }
+.turnbanner.WA .tb-who { color: var(--wa); }
+.turnbanner.VB { border-bottom-color: var(--vb); }
+.turnbanner.VB .tb-who { color: var(--vb); }
+.turnbanner.your { background: rgba(79, 107, 74, 0.16); border-bottom-color: var(--wa); }
+.turnbanner.your .tb-who { color: var(--wa); animation: turnPulse 1.8s ease-in-out infinite; }
+.turnbanner.win { background: rgba(168, 121, 27, 0.16); border-bottom-color: var(--gold); }
+.turnbanner.win .tb-who { color: var(--gold); }
+
+@keyframes turnPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 #logoutmodal { z-index: 140; }
 #logoutmodal code { display: block; max-height: 8rem; overflow: auto; word-break: break-all; }

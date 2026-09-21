@@ -139,10 +139,57 @@ function toast(msg) {
   if (el) { el.textContent = msg; setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 4000); }
 }
 
+// Who must act now: the pending player when the engine is waiting on a deferred
+// choice (battle hits, discards, field hospitals), otherwise the turn player.
+const PENDING_LABELS = {
+  "battle-hits": "assigning battle hits",
+  "battle-ambush": "ambush",
+  "battle-effects": "battle effects",
+  "discard-down": "discarding cards",
+  "field-hospitals": "field hospitals",
+};
+
+function activeFaction(g) {
+  if (g.pending && g.pending.Player) return g.pending.Player;
+  return g.current;
+}
+
+function actionLabel(g) {
+  if (g.setupMode) return "setup";
+  if (g.pending && PENDING_LABELS[g.pending.Kind]) return PENDING_LABELS[g.pending.Kind];
+  if (g.battle) return "battle · " + (g.battle.StepName || "");
+  return (PHASE[g.phase] || g.phase || "").toLowerCase();
+}
+
+function renderTurnBanner(g) {
+  const el = document.getElementById("turnbanner");
+  if (!el) return;
+  if (g.winner && g.winner.length) {
+    el.hidden = false;
+    el.className = "turnbanner win";
+    el.innerHTML = `<span class="tb-who">Game over</span><span class="tb-label">${g.winner.join(" + ")} won</span>`;
+    return;
+  }
+  const actor = activeFaction(g);
+  if (!actor) { el.hidden = true; return; }
+  const yours = actor === viewer;
+  el.hidden = false;
+  el.className = "turnbanner " + actor + (yours ? " your" : "");
+  el.innerHTML =
+    `<span class="tb-who">${yours ? "Your turn" : actor + "'s turn"}</span>` +
+    `<span class="tb-label">${actionLabel(g)}</span>`;
+}
+
+function hideTurnBanner() {
+  const el = document.getElementById("turnbanner");
+  if (el) el.hidden = true;
+}
+
 function render() {
   if (!game || !game.room) return;
   const room = game.room;
   if (!room.started) {
+    hideTurnBanner();
     document.getElementById("turnbar").innerHTML =
       `<div>room <b>${room.id}</b></div><div>choosing factions…</div>`;
     renderLobby(room);
@@ -151,10 +198,12 @@ function render() {
   }
   hideOverlays();
   const g = game;
+  const actor = activeFaction(g);
   document.getElementById("turnbar").innerHTML =
     `<div>room <b>${room.id}</b> · round <b>${g.round}</b> · phase <b>${PHASE[g.phase] || g.phase}</b></div>` +
-    `<div>current <b>${g.current}</b> · you <b>${viewer || "?"}</b>` +
+    `<div>to act <b>${actor || "?"}</b> · you <b>${viewer || "?"}</b>` +
     (g.winner && g.winner.length ? ` · winner <b>${g.winner.join("+")}</b>` : "") + `</div>`;
+  renderTurnBanner(g);
   renderPlayers(g);
   renderMinimap(g);
   renderBoard(g);
@@ -200,10 +249,11 @@ function hideOverlays() {
 function renderPlayers(g) {
   const el = document.getElementById("players");
   el.innerHTML = "";
+  const actor = activeFaction(g);
   for (const f of g.order) {
     const p = g.players[f];
     const div = document.createElement("div");
-    div.className = "pcard " + f + (f === g.current ? " current" : "");
+    div.className = "pcard " + f + (f === actor ? " current" : "");
     let extra = "";
     if (f === "MC") {
       // Wood on the board (spendable) vs the off-board supply reserve.
@@ -468,17 +518,20 @@ function renderActions(g) {
   el.innerHTML = "";
   const head = document.getElementById("actionhead");
   const pend = document.getElementById("pendhint");
+  const actor = activeFaction(g);
   pend.textContent = g.pending ? g.pending.Kind + " (" + g.pending.Player + ")" : "";
   if (g.setupMode) {
-    head.textContent = "Setup · " + (g.setupStage || "");
+    head.textContent = "Setup · " + actor + (g.setupStage ? " · " + g.setupStage : "");
   } else if (g.winner && g.winner.length) {
     head.textContent = "Game over";
+  } else if (g.pending) {
+    head.textContent = "Actions · " + actor + " · " + (PENDING_LABELS[g.pending.Kind] || g.pending.Kind);
   } else if (g.dayStage === "craft") {
-    head.textContent = "Actions · " + g.current + " · craft first";
+    head.textContent = "Actions · " + actor + " · craft first";
   } else if (g.dayStage === "decree") {
-    head.textContent = "Actions · " + g.current + " · resolve Decree";
+    head.textContent = "Actions · " + actor + " · resolve Decree";
   } else {
-    head.textContent = "Actions · " + g.current;
+    head.textContent = "Actions · " + actor;
   }
 
   if (g.battle) {
@@ -505,9 +558,9 @@ function renderActions(g) {
     const d = document.createElement("div");
     d.className = "hint";
     if (!(g.winner && g.winner.length)) {
-      d.textContent = (game.you && g.current === game.you)
+      d.textContent = (game.you && actor === game.you)
         ? "No legal actions."
-        : "Waiting for " + g.current + "…";
+        : "Waiting for " + actor + "…";
     }
     el.append(d);
     return;
@@ -656,6 +709,7 @@ function setToken(tok) {
 function signOut(msg) {
   closeLogout();
   token = ""; game = null; etag = ""; viewer = "";
+  hideTurnBanner();
   localStorage.removeItem("rmn-token");
   closeWS();
   if (timer) clearInterval(timer);

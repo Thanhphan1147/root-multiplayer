@@ -40,10 +40,23 @@ func Redact(g *root.Game, viewer string) map[string]any {
 
 	snap := root.Snapshot(cp)
 	snap["hash"] = ""
-	if string(g.Current) != viewer {
+	// The acting player is the pending player when the engine is waiting on a
+	// deferred choice (battle hits, discards, field hospitals), otherwise the
+	// turn player. Only they receive legal actions. Whose choice it is stays
+	// visible to everyone so clients can show the turn indicator; any hidden
+	// context is stripped.
+	actor := g.Current
+	if g.Pending != nil {
+		actor = g.Pending.Player
+	}
+	if string(actor) != viewer {
 		snap["legal"] = []root.Action{}
 	}
-	if g.Pending != nil && string(g.Pending.Player) != viewer {
+	if g.Pending != nil {
+		pend := *g.Pending
+		pend.Context = nil
+		snap["pending"] = &pend
+	} else {
 		snap["pending"] = nil
 	}
 	snap["log"] = redactLog(g.Log, viewer)
