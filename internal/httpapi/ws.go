@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Thanhphan1147/root-multiplayer/internal/room"
 	"github.com/gorilla/websocket"
 )
 
@@ -94,7 +93,7 @@ func (s *Server) ws(w http.ResponseWriter, r *http.Request) {
 		}
 		tok = m.Token
 	}
-	claims, err := room.VerifyToken(s.Store.Secret, tok)
+	rm, _, _, err := s.Store.Auth(tok)
 	if err != nil {
 		_ = conn.WriteJSON(map[string]any{"type": "error", "error": "unauthorized"})
 		return
@@ -102,10 +101,10 @@ func (s *Server) ws(w http.ResponseWriter, r *http.Request) {
 	_ = conn.SetReadDeadline(time.Time{})
 
 	client := &wsClient{conn: conn}
-	s.hub().add(claims.Room, client)
-	defer s.hub().remove(claims.Room, client)
+	s.hub().add(rm.ID, client)
+	defer s.hub().remove(rm.ID, client)
 
-	_ = client.write(map[string]any{"type": "ready", "room": claims.Room})
+	_ = client.write(map[string]any{"type": "ready", "room": rm.ID})
 
 	// Keepalive pings, and read/discard until the client goes away.
 	conn.SetPongHandler(func(string) error { return conn.SetReadDeadline(time.Now().Add(60 * time.Second)) })

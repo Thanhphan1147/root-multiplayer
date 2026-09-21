@@ -13,11 +13,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func newTestServer(t *testing.T) *httptest.Server {
+func newTestServer(t *testing.T) (*httptest.Server, *room.Store) {
 	t.Helper()
 	store := &room.Store{Dir: t.TempDir(), Secret: []byte("test")}
 	srv := &Server{Store: store}
-	return httptest.NewServer(srv.Handler())
+	return httptest.NewServer(srv.Handler()), store
 }
 
 func do(t *testing.T, ts *httptest.Server, method, path, token string, body any, headers map[string]string) (*http.Response, map[string]any) {
@@ -48,19 +48,29 @@ func do(t *testing.T, ts *httptest.Server, method, path, token string, body any,
 	return resp, out
 }
 
+// takeAll takes every seat over HTTP and returns the tokens.
+func takeAll(t *testing.T, ts *httptest.Server, rm *room.Room) []string {
+	t.Helper()
+	tokens := make([]string, len(rm.Seats))
+	for i, st := range rm.Seats {
+		resp, out := do(t, ts, "POST", "/api/take", "", map[string]any{"room": rm.ID, "seat": st.ID}, nil)
+		if resp.StatusCode != 200 {
+			t.Fatalf("take seat %d: %d (%v)", i, resp.StatusCode, out)
+		}
+		tokens[i], _ = out["token"].(string)
+	}
+	return tokens
+}
+
 func TestEndToEnd(t *testing.T) {
-	ts := newTestServer(t)
+	ts, store := newTestServer(t)
 	defer ts.Close()
 
-	_, created := do(t, ts, "POST", "/api/rooms", "", map[string]any{"players": 4}, nil)
-	tokensAny, _ := created["tokens"].([]any)
-	if len(tokensAny) != 4 {
-		t.Fatalf("expected 4 tokens, got %v", created["tokens"])
+	rm, err := store.Create("Test", 4)
+	if err != nil {
+		t.Fatal(err)
 	}
-	tokens := make([]string, len(tokensAny))
-	for i, v := range tokensAny {
-		tokens[i] = v.(string)
-	}
+	tokens := takeAll(t, ts, rm)
 
 	for i, f := range []string{"MC", "ED", "WA", "VB"} {
 		resp, out := do(t, ts, "POST", "/api/faction", tokens[i], map[string]any{"faction": f}, nil)
@@ -68,9 +78,8 @@ func TestEndToEnd(t *testing.T) {
 			t.Fatalf("pick %s: %d", f, resp.StatusCode)
 		}
 		if i == 3 {
-			rm := out["room"].(map[string]any)
-			if rm["started"] != true {
-				t.Fatal("game should have started")
+			if out["room"].(map[string]any)["started"] != true {
+				t.Fatal("the game should have started")
 			}
 		}
 	}
@@ -122,16 +131,64 @@ func TestEndToEnd(t *testing.T) {
 	}
 }
 
-func TestWebSocketNotify(t *testing.T) {
-	ts := newTestServer(t)
+func TestListAndTakeHTTP(t *testing.T) {
+	ts, store := newTestServer(t)
 	defer ts.Close()
 
-	_, created := do(t, ts, "POST", "/api/rooms", "", map[string]any{"players": 4}, nil)
-	tokensAny := created["tokens"].([]any)
-	tokens := make([]string, len(tokensAny))
-	for i, v := range tokensAny {
-		tokens[i] = v.(string)
+	rm, err := store.Create("Alpha", 2)
+	if err != nil {
+		t.Fatal(err)
 	}
+
+	resp, list := do(t, ts, "GET", "/api/rooms", "", nil, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("list: %d", resp.StatusCode)
+	}
+	if rooms, _ := list["rooms"].([]any); len(rooms) != 1 {
+		t.Fatalf("expected 1 room, got %v", list["rooms"])
+	}
+
+	resp, out := do(t, ts, "POST", "/api/take", "", map[string]any{"room": rm.ID, "seat": rm.Seats[0].ID}, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("take: %d (%v)", resp.StatusCode, out)
+	}
+	tok, _ := out["token"].(string)
+	if tok == "" {
+		t.Fatal("take should return a token")
+	}
+	resp, state := do(t, ts, "GET", "/api/state", tok, nil, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("state with taken token: %d", resp.StatusCode)
+	}
+	if _, ok := state["room"]; !ok {
+		t.Fatalf("state missing room: %v", state)
+	}
+}
+
+func TestLeaveInvalidatesToken(t *testing.T) {
+	ts, store := newTestServer(t)
+	defer ts.Close()
+
+	rm, _ := store.Create("", 2)
+	_, out := do(t, ts, "POST", "/api/take", "", map[string]any{"room": rm.ID, "seat": rm.Seats[0].ID}, nil)
+	tok, _ := out["token"].(string)
+	if tok == "" {
+		t.Fatal("take should return a token")
+	}
+	if resp, _ := do(t, ts, "POST", "/api/leave", tok, nil, nil); resp.StatusCode != 200 {
+		t.Fatalf("leave: %d", resp.StatusCode)
+	}
+	if resp, _ := do(t, ts, "GET", "/api/state", tok, nil, nil); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("state after leave should be 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestWebSocketNotify(t *testing.T) {
+	ts, store := newTestServer(t)
+	defer ts.Close()
+
+	rm, _ := store.Create("", 4)
+	tokens := takeAll(t, ts, rm)
 	for i, f := range []string{"MC", "ED", "WA", "VB"} {
 		do(t, ts, "POST", "/api/faction", tokens[i], map[string]any{"faction": f}, nil)
 	}
@@ -166,37 +223,5 @@ func TestWebSocketNotify(t *testing.T) {
 	}
 	if changed["type"] != "changed" {
 		t.Fatalf("expected changed, got %v", changed)
-	}
-}
-
-func TestListAndJoinHTTP(t *testing.T) {
-	ts := newTestServer(t)
-	defer ts.Close()
-
-	_, created := do(t, ts, "POST", "/api/rooms", "", map[string]any{"players": 3, "open": true}, nil)
-	roomID := created["room"].(map[string]any)["id"].(string)
-
-	resp, list := do(t, ts, "GET", "/api/rooms", "", nil, nil)
-	if resp.StatusCode != 200 {
-		t.Fatalf("list: %d", resp.StatusCode)
-	}
-	if rooms, _ := list["rooms"].([]any); len(rooms) != 1 {
-		t.Fatalf("expected 1 open room, got %v", list["rooms"])
-	}
-
-	resp, joined := do(t, ts, "POST", "/api/join", "", map[string]any{"room": roomID}, nil)
-	if resp.StatusCode != 200 {
-		t.Fatalf("join: %d (%v)", resp.StatusCode, joined)
-	}
-	tok, _ := joined["token"].(string)
-	if tok == "" {
-		t.Fatal("join should return a token")
-	}
-	resp, state := do(t, ts, "GET", "/api/state", tok, nil, nil)
-	if resp.StatusCode != 200 {
-		t.Fatalf("state with joined token: %d", resp.StatusCode)
-	}
-	if _, ok := state["room"]; !ok {
-		t.Fatalf("state missing room: %v", state)
 	}
 }

@@ -33,7 +33,8 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.health)
 	mux.HandleFunc("/api/rooms", s.rooms)
-	mux.HandleFunc("/api/join", s.join)
+	mux.HandleFunc("/api/take", s.take)
+	mux.HandleFunc("/api/leave", s.leave)
 	mux.HandleFunc("/api/state", s.state)
 	mux.HandleFunc("/api/faction", s.faction)
 	mux.HandleFunc("/api/action", s.action)
@@ -86,56 +87,39 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// rooms lists joinable rooms on GET and creates a room on POST.
+// rooms lists the administrator's rooms for the lobby.
 func (s *Server) rooms(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		list, err := s.Store.List()
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "could not list rooms")
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"rooms": list})
-	case http.MethodPost:
-		var req struct {
-			Players int      `json:"players"`
-			Names   []string `json:"names"`
-			Open    bool     `json:"open"`
-		}
-		if err := decode(r, &req); err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		rm, tokens, err := s.Store.Create(req.Players, req.Names, req.Open)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"room": rm, "tokens": tokens})
-	default:
-		writeError(w, http.StatusMethodNotAllowed, "GET or POST only")
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "GET only")
+		return
 	}
+	list, err := s.Store.List()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list rooms")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rooms": list})
 }
 
-// join claims the next free seat in an open room and returns its token.
-func (s *Server) join(w http.ResponseWriter, r *http.Request) {
+// take occupies a free seat and returns its token.
+func (s *Server) take(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
 	var req struct {
 		Room string `json:"room"`
+		Seat string `json:"seat"`
 	}
 	if err := decode(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	id := strings.TrimSpace(req.Room)
-	if id == "" {
-		writeError(w, http.StatusBadRequest, "missing room")
+	if strings.TrimSpace(req.Room) == "" || strings.TrimSpace(req.Seat) == "" {
+		writeError(w, http.StatusBadRequest, "missing room or seat")
 		return
 	}
-	rm, seat, tok, err := s.Store.ClaimNext(id)
+	rm, _, seat, tok, err := s.Store.Take(req.Room, req.Seat)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -143,18 +127,32 @@ func (s *Server) join(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"room": rm, "seat": seat, "token": tok})
 }
 
-func (s *Server) state(w http.ResponseWriter, r *http.Request) {
-	claims, ok := s.auth(r)
+// leave frees the caller's seat and rotates its token.
+func (s *Server) leave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	rm, seat, g, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "missing or invalid token")
 		return
 	}
-	rm, g, err := s.Store.Load(claims.Room)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "room not found")
+	if _, _, err := s.Store.Leave(rm.ID, seat.ID); err != nil {
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	payload := s.payload(rm, g, claims.Seat)
+	s.broadcast(rm.ID, g)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) state(w http.ResponseWriter, r *http.Request) {
+	rm, seat, g, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "missing or invalid token")
+		return
+	}
+	payload := s.payload(rm, g, seat.Index)
 	etag := etagOf(payload)
 	w.Header().Set("ETag", etag)
 	if r.Header.Get("If-None-Match") == etag {
@@ -169,7 +167,7 @@ func (s *Server) faction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
-	claims, ok := s.auth(r)
+	rm, seat, _, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "missing or invalid token")
 		return
@@ -181,13 +179,13 @@ func (s *Server) faction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	rm, g, err := s.Store.PickFaction(claims.Room, claims.Seat, req.Faction)
+	updated, g, err := s.Store.PickFaction(rm.ID, seat.ID, req.Faction)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-	s.broadcast(claims.Room, g)
-	s.respondState(w, s.payload(rm, g, claims.Seat))
+	s.broadcast(rm.ID, g)
+	s.respondState(w, s.payload(updated, g, seat.Index))
 }
 
 func (s *Server) action(w http.ResponseWriter, r *http.Request) {
@@ -195,7 +193,7 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
-	claims, ok := s.auth(r)
+	rm, seat, _, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "missing or invalid token")
 		return
@@ -207,28 +205,28 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	rm, g, err := s.Store.ApplyAction(claims.Room, claims.Seat, req.ID)
+	updated, g, err := s.Store.ApplyAction(rm.ID, seat.ID, req.ID)
 	if err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
-	s.broadcast(claims.Room, g)
-	s.respondState(w, s.payload(rm, g, claims.Seat))
+	s.broadcast(rm.ID, g)
+	s.respondState(w, s.payload(updated, g, seat.Index))
 }
 
 func (s *Server) export(w http.ResponseWriter, r *http.Request) {
-	claims, ok := s.auth(r)
+	rm, _, _, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "missing or invalid token")
 		return
 	}
-	text, err := s.Store.Export(claims.Room)
+	text, err := s.Store.Export(rm.ID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "room not found")
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+claims.Room+`.rmn"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+rm.ID+`.rmn"`)
 	_, _ = w.Write([]byte(text))
 }
 
@@ -258,7 +256,8 @@ func (s *Server) payload(rm *room.Room, g *root.Game, seat int) map[string]any {
 	return p
 }
 
-func (s *Server) auth(r *http.Request) (room.Claims, bool) {
+// auth resolves the seat token on a request to a room, seat, and game.
+func (s *Server) auth(r *http.Request) (*room.Room, room.Seat, *root.Game, bool) {
 	tok := ""
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		tok = strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
@@ -267,13 +266,13 @@ func (s *Server) auth(r *http.Request) (room.Claims, bool) {
 		tok = r.URL.Query().Get("token")
 	}
 	if tok == "" {
-		return room.Claims{}, false
+		return nil, room.Seat{}, nil, false
 	}
-	c, err := room.VerifyToken(s.Store.Secret, tok)
+	rm, seat, g, err := s.Store.Auth(tok)
 	if err != nil {
-		return room.Claims{}, false
+		return nil, room.Seat{}, nil, false
 	}
-	return c, true
+	return rm, seat, g, true
 }
 
 func seatFaction(rm *room.Room, seat int) string {

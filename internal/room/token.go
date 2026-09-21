@@ -13,20 +13,22 @@ import (
 	"time"
 )
 
-// Claims are embedded in a seat token. Exp == 0 means the token never expires
-// (correspondence play).
+// Claims are embedded in a seat token. Seat is the seat's stable id and Ver is
+// the seat's token version, so leaving or ejecting a seat can revoke the old
+// token. Exp == 0 means the token never expires (correspondence play).
 type Claims struct {
 	Room string `json:"room"`
-	Seat int    `json:"seat"`
+	Seat string `json:"seat"`
+	Ver  int    `json:"ver"`
 	Exp  int64  `json:"exp,omitempty"`
 }
 
 func b64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 
 // IssueToken creates a signed HS256 JWT for a room seat.
-func IssueToken(secret []byte, roomID string, seat int, ttl time.Duration) string {
+func IssueToken(secret []byte, roomID, seatID string, ver int, ttl time.Duration) string {
 	header := b64([]byte(`{"alg":"HS256","typ":"JWT"}`))
-	claims := Claims{Room: roomID, Seat: seat}
+	claims := Claims{Room: roomID, Seat: seatID, Ver: ver}
 	if ttl > 0 {
 		claims.Exp = time.Now().Add(ttl).Unix()
 	}
@@ -61,8 +63,8 @@ func VerifyToken(secret []byte, token string) (Claims, error) {
 	if c.Exp > 0 && time.Now().Unix() > c.Exp {
 		return Claims{}, errors.New("token expired")
 	}
-	if c.Room == "" {
-		return Claims{}, errors.New("missing room")
+	if c.Room == "" || c.Seat == "" {
+		return Claims{}, errors.New("malformed token")
 	}
 	return c, nil
 }

@@ -547,18 +547,67 @@ button:focus-visible, a:focus-visible, .clearing:focus-visible {
 .tokrow { display: flex; align-items: center; gap: 0.4rem; }
 .tokrow code { flex: 1; font-family: var(--mono); font-size: 0.66rem; padding: 0.3rem 0.4rem; border: 1px solid var(--line);
   border-radius: var(--radius); background: var(--paper-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.roomlist { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.3rem; max-height: 34vh; overflow: auto; }
-.roomrow { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0.5rem;
-  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-2); }
-.roomrow .btn { margin-top: 0; }
-.roommeta { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
-.roommeta .rid { font-family: var(--mono); font-size: 0.72rem; font-weight: 700; }
-.roommeta .rmeta { font-family: var(--mono); font-size: 0.62rem; color: var(--ink-soft); }
-.roommeta .rfactions { display: flex; flex-wrap: wrap; gap: 0.2rem; }
+.roomlist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-top: 0.4rem;
+  max-height: 54vh;
+  overflow: auto;
+  padding: 0.2rem;
+}
 .roomempty { padding: 0.3rem 0; font-family: var(--mono); font-size: 0.66rem; color: var(--ink-soft); }
-.card .check { display: flex; align-items: center; gap: 0.45rem; text-transform: none; letter-spacing: 0; font-size: 0.7rem; }
-.card .check input { width: auto; }
-.sep { border: none; border-top: 1px solid var(--line); margin: 0.9rem 0 0.2rem; }
+
+/* A host's table: name + status over the pixel-art board. */
+.roomtable {
+  flex: 1 1 210px;
+  min-width: 190px;
+  max-width: 290px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.1));
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.rt-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.4rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1.5px solid var(--line-strong);
+  background: var(--paper-2);
+}
+.rt-name { font-family: var(--mono); font-size: 0.72rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-meta { font-family: var(--mono); font-size: 0.58rem; color: var(--ink-soft); white-space: nowrap; }
+
+/* Pixel-art table: crisp edges, chunky blocks, top-down. */
+.ptable { display: block; width: 100%; height: auto; shape-rendering: crispEdges; background: var(--paper); }
+.ptable .wood-dark { fill: #8a5a2b; }
+.ptable .wood-hi { fill: #a06b36; }
+.ptable .felt { fill: #4f6b4a; }
+.ptable .plaque { fill: #dccfb2; }
+.ptable .ptable-id { font-family: var(--mono); font-size: 6px; font-weight: 700; text-anchor: middle; fill: var(--ink); }
+
+.pseat { cursor: default; }
+.pseat.free { cursor: pointer; }
+.pseat .seat-shadow { fill: rgba(22, 36, 27, 0.22); }
+.pseat .seat-body { fill: #6f4520; }
+.pseat .seat-back { fill: #5a3718; }
+.pseat .seat-cushion { fill: var(--ink-soft); }
+.pseat .pseat-label { font-family: var(--mono); font-size: 6px; font-weight: 700; text-anchor: middle; fill: var(--paper); pointer-events: none; }
+.pseat.free .pseat-label { fill: var(--paper-3); }
+.pseat.free:hover .seat-body, .pseat.free:focus-visible .seat-body { fill: var(--gold); }
+.pseat.free:hover .seat-back, .pseat.free:focus-visible .seat-back { fill: #7a5410; }
+.pseat.free:hover .pseat-label, .pseat.free:focus-visible .pseat-label { fill: var(--ink); }
+.pseat.busy { opacity: 0.45; }
+.pseat.MC .seat-cushion { fill: var(--mc); }
+.pseat.ED .seat-cushion { fill: var(--ed); }
+.pseat.WA .seat-cushion { fill: var(--wa); }
+.pseat.VB .seat-cushion { fill: var(--vb); }
+
+.card-wide { width: min(900px, 96vw); }
+.landingfoot { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.9rem; }
+.landingfoot .btn { margin-top: 0; }
+.landingfoot input { flex: 1 1 12rem; width: auto; }
+.landingfoot .landingsep { color: var(--line-strong); }
 .factionpick { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
 .factionpick button { flex: 1 1 6rem; font-family: var(--mono); font-size: 0.75rem; padding: 0.6rem; border: 1.5px solid var(--line-strong);
   border-radius: var(--radius); background: var(--paper); cursor: pointer; }

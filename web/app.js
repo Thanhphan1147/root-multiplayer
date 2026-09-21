@@ -82,58 +82,6 @@ async function pickFaction(faction) {
   else if (r.data && r.data.error) { toast(r.data.error); }
 }
 
-// Copy text with a fallback that works on insecure origins and mobile Safari,
-// where navigator.clipboard is unavailable.
-async function copyText(text, btn, codeEl) {
-  let ok = false;
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      ok = true;
-    }
-  } catch (e) { ok = false; }
-  if (!ok) {
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.top = "0";
-      ta.style.left = "0";
-      ta.style.width = "1px";
-      ta.style.height = "1px";
-      ta.style.padding = "0";
-      ta.style.border = "none";
-      ta.style.outline = "none";
-      ta.style.boxShadow = "none";
-      ta.style.background = "transparent";
-      ta.style.fontSize = "12pt";
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      ta.setSelectionRange(0, ta.value.length);
-      ok = document.execCommand("copy");
-      document.body.removeChild(ta);
-    } catch (e) { ok = false; }
-  }
-  if (!ok && codeEl && window.getSelection) {
-    try {
-      const range = document.createRange();
-      range.selectNodeContents(codeEl);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-    } catch (e) { /* ignore */ }
-  }
-  if (btn) {
-    const old = btn.dataset.label || btn.textContent;
-    btn.dataset.label = old;
-    btn.textContent = ok ? "copied" : "select & copy";
-    setTimeout(() => { btn.textContent = old; }, 1800);
-  }
-  return ok;
-}
-
 function toast(msg) {
   const el = document.getElementById("pendhint");
   if (el) { el.textContent = msg; setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 4000); }
@@ -235,13 +183,13 @@ function renderLobby(room) {
 }
 
 function showOverlay(id) {
-  for (const x of ["landing", "created", "lobby"]) {
+  for (const x of ["landing", "lobby"]) {
     document.getElementById(x).hidden = (x !== id);
   }
   if (id === "landing") loadRooms();
 }
 function hideOverlays() {
-  for (const x of ["landing", "created", "lobby"]) {
+  for (const x of ["landing", "lobby"]) {
     document.getElementById(x).hidden = true;
   }
 }
@@ -676,28 +624,7 @@ intervalInput.onchange = () => {
   restartTimer();
 };
 
-// --- Landing / join / create ---
-function renderTokens(roomId, tokens) {
-  document.getElementById("createdid").textContent = roomId;
-  const el = document.getElementById("toklist");
-  el.innerHTML = "";
-  tokens.forEach((tok, i) => {
-    const link = location.origin + location.pathname + "#t=" + encodeURIComponent(tok);
-    const row = document.createElement("div");
-    row.className = "tokrow";
-    const code = document.createElement("code");
-    code.textContent = link;
-    const copy = document.createElement("button");
-    copy.className = "btn ghost";
-    copy.textContent = "copy";
-    copy.onclick = () => copyText(link, copy, code);
-    row.innerHTML = `<span class="chip">seat ${i + 1}</span>`;
-    row.append(code, copy);
-    el.append(row);
-  });
-  document.getElementById("enter").onclick = () => setToken(tokens[0]);
-}
-
+// --- Lobby: the host's tables, with clickable seats ---
 function setToken(tok) {
   token = tok;
   localStorage.setItem("rmn-token", tok);
@@ -706,8 +633,7 @@ function setToken(tok) {
   fetchState(true).then(() => { if (wsLive) connectWS(); restartTimer(); });
 }
 
-function signOut(msg) {
-  closeLogout();
+function clearSession(msg) {
   token = ""; game = null; etag = ""; viewer = "";
   hideTurnBanner();
   localStorage.removeItem("rmn-token");
@@ -723,120 +649,175 @@ function signOut(msg) {
   showOverlay("landing");
 }
 
-// --- Open room list (landing) ---
+// signOut clears a token the server has already rejected.
+function signOut(msg) {
+  closeLogout();
+  clearSession(msg);
+}
+
+// leaveSeat frees the seat on the server (revoking the token), then clears it.
+async function leaveSeat() {
+  closeLogout();
+  if (token) {
+    try { await api("/api/leave", { method: "POST", body: "{}" }); } catch (e) { /* ignore */ }
+  }
+  clearSession("");
+}
+
+// --- Lobby: the host's tables, with clickable seats ---
 async function loadRooms() {
   const el = document.getElementById("roomlist");
   if (!el) return;
-  el.innerHTML = '<div class="roomempty">Loading…</div>';
+  el.innerHTML = '<div class="roomempty">Setting the tables…</div>';
   let r;
   try {
     r = await api("/api/rooms");
   } catch (e) {
-    el.innerHTML = '<div class="roomempty">Could not load rooms.</div>';
+    el.innerHTML = '<div class="roomempty">Could not reach the server.</div>';
     return;
   }
   const rooms = (r.data && r.data.rooms) || [];
   el.innerHTML = "";
   if (rooms.length === 0) {
-    el.innerHTML = '<div class="roomempty">No open rooms — create one below.</div>';
+    el.innerHTML = '<div class="roomempty">No tables yet — the host hasn’t set any up.</div>';
     return;
   }
-  for (const room of rooms) el.append(roomRow(room));
+  for (const room of rooms) el.append(roomTable(room));
 }
 
-function roomRow(room) {
-  const row = document.createElement("div");
-  row.className = "roomrow";
-  const taken = (room.seats || []).filter(s => s.faction).map(s => s.faction);
-  const meta = document.createElement("div");
-  meta.className = "roommeta";
-  meta.innerHTML =
-    `<span class="rid">room ${room.id}</span>` +
-    `<span class="rmeta">${room.openSeats}/${room.players} seats open</span>` +
-    (taken.length
-      ? `<span class="rfactions">${taken.map(f => `<span class="chip ${f}">${f}</span>`).join("")}</span>`
-      : "");
-  const btn = document.createElement("button");
-  btn.className = "btn";
-  btn.type = "button";
-  btn.textContent = "Join";
-  btn.onclick = () => joinRoom(room.id, btn);
-  row.append(meta, btn);
-  return row;
+// roomTable wraps the pixel-art table with its name and status.
+function roomTable(room) {
+  const wrap = document.createElement("div");
+  wrap.className = "roomtable";
+
+  const seated = room.seats.filter(s => s.occupied).length;
+  const status = room.started ? "in progress" : "lobby";
+  const head = document.createElement("div");
+  head.className = "rt-head";
+  head.innerHTML =
+    `<span class="rt-name">${escapeHTML(room.name || ("room " + room.id))}</span>` +
+    `<span class="rt-meta">${status} · ${seated}/${room.seats.length} seated</span>`;
+  wrap.append(head, pixelTable(room));
+  return wrap;
 }
 
-async function joinRoom(id, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = "Joining…"; }
+// pixelTable draws the table and one chair per seat as crisp pixel blocks.
+function pixelTable(room) {
+  const NS = "http://www.w3.org/2000/svg";
+  const n = room.seats.length;
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 120 84");
+  svg.setAttribute("class", "ptable");
+  svg.setAttribute("role", "group");
+  svg.setAttribute("aria-label", "Room " + room.id + ", " + n + " seats");
+
+  // Chair anchors around the table, chosen by seat count.
+  const layouts = {
+    2: [[60, 7], [60, 77]],
+    3: [[60, 7], [19, 77], [101, 77]],
+    4: [[60, 7], [60, 77], [7, 42], [113, 42]],
+  };
+  const spots = layouts[n] || layouts[4];
+
+  // Tabletop: blocky planks with a felt centre and an engraved plaque.
+  svg.append(pixelRect(26, 20, 68, 44, "wood-dark"));
+  svg.append(pixelRect(26, 20, 68, 4, "wood-hi"));
+  svg.append(pixelRect(30, 27, 60, 30, "felt"));
+  svg.append(pixelRect(40, 37, 40, 11, "plaque"));
+  const plaque = document.createElementNS(NS, "text");
+  plaque.setAttribute("x", 60);
+  plaque.setAttribute("y", 45);
+  plaque.setAttribute("class", "ptable-id");
+  plaque.textContent = room.id;
+  svg.append(plaque);
+
+  room.seats.forEach((seat, i) => {
+    const [cx, cy] = spots[i] || spots[spots.length - 1];
+    svg.append(chair(room, seat, cx, cy));
+  });
+  return svg;
+}
+
+function pixelRect(x, y, w, h, cls) {
+  const NS = "http://www.w3.org/2000/svg";
+  const r = document.createElementNS(NS, "rect");
+  r.setAttribute("x", x); r.setAttribute("y", y);
+  r.setAttribute("width", w); r.setAttribute("height", h);
+  r.setAttribute("class", cls);
+  return r;
+}
+
+// chair is a top-down seat; free chairs are interactive, taken ones show the
+// occupant's faction.
+function chair(room, seat, cx, cy) {
+  const NS = "http://www.w3.org/2000/svg";
+  const g = document.createElementNS(NS, "g");
+  g.setAttribute("class", "pseat " + (seat.occupied ? "occupied " : "free ") + (seat.faction || ""));
+  g.setAttribute("transform", `translate(${cx} ${cy})`);
+  g.append(pixelRect(-7, -7, 14, 14, "seat-shadow"));
+  g.append(pixelRect(-6, -6, 12, 12, "seat-body"));
+  g.append(pixelRect(-6, -6, 12, 3, "seat-back"));
+  if (seat.faction) g.append(pixelRect(-4, -1, 8, 7, "seat-cushion"));
+
+  const label = document.createElementNS(NS, "text");
+  label.setAttribute("x", 0);
+  label.setAttribute("y", 3);
+  label.setAttribute("class", "pseat-label");
+  label.textContent = seat.faction || String(seat.index + 1);
+  g.append(label);
+
+  if (seat.occupied) {
+    g.setAttribute("aria-label", "Seat " + (seat.index + 1) + " taken" + (seat.faction ? " by " + seat.faction : ""));
+    return g;
+  }
+  g.setAttribute("role", "button");
+  g.setAttribute("tabindex", "0");
+  g.setAttribute("aria-label", "Take seat " + (seat.index + 1));
+  const take = () => takeSeat(room.id, seat, g);
+  g.addEventListener("click", take);
+  g.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); take(); }
+  });
+  return g;
+}
+
+async function takeSeat(roomID, seat, node) {
+  const verb = seat.faction ? ("Take over " + seat.faction + " in") : "Take";
+  if (!window.confirm(`${verb} seat ${seat.index + 1}?`)) return;
+  node.classList.add("busy");
   let r;
   try {
-    r = await api("/api/join", { method: "POST", body: JSON.stringify({ room: id }) });
+    r = await api("/api/take", { method: "POST", body: JSON.stringify({ room: roomID, seat: seat.id }) });
   } catch (e) {
     r = { data: { error: "network error" } };
   }
+  node.classList.remove("busy");
   if (r.data && r.data.token) { setToken(r.data.token); return; }
-  if (btn) { btn.disabled = false; btn.textContent = "Join"; }
-  document.getElementById("landingerr").textContent = (r.data && r.data.error) || "could not join that room";
+  document.getElementById("landingerr").textContent = (r.data && r.data.error) || "could not take that seat";
+  loadRooms();
 }
 
-document.getElementById("create").onclick = async () => {
-  const players = parseInt(document.getElementById("playerCount").value, 10);
-  if (!Number.isInteger(players) || players < 2 || players > 4) {
-    document.getElementById("landingerr").textContent = "Choose 2 to 4 players.";
-    return;
-  }
-  const name = document.getElementById("creatorname").value.trim();
-  const open = document.getElementById("openroom").checked;
-  let r;
-  try {
-    r = await api("/api/rooms", { method: "POST", body: JSON.stringify({ players, names: name ? [name] : [], open }) });
-  } catch (e) {
-    r = { data: { error: "network error" } };
-  }
-  if (r.data && r.data.room) {
-    renderTokens(r.data.room.id, r.data.tokens);
-    showOverlay("created");
-  } else {
-    document.getElementById("landingerr").textContent = (r.data && r.data.error) || "failed to create room";
-  }
-};
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 document.getElementById("refreshrooms").onclick = () => { loadRooms(); };
 document.getElementById("join").onclick = () => {
   const tok = document.getElementById("jointoken").value.trim();
   if (tok) setToken(tok);
 };
-// --- Logout (always available) ---
+// --- Leave (always available) ---
 const logoutModal = document.getElementById("logoutmodal");
-const logoutToken = document.getElementById("logouttoken");
-const logoutWrap = document.getElementById("logouttokenwrap");
-const logoutWarn = document.getElementById("logoutwarn");
 
 function openLogout() {
-  if (token) {
-    logoutWarn.textContent =
-      "This removes your seat token from this browser. If you haven't saved it " +
-      "somewhere, you won't be able to rejoin this seat — the token will be lost forever.";
-    logoutToken.textContent = token;
-    logoutWrap.hidden = false;
-    document.getElementById("logoutconfirm").hidden = false;
-  } else {
-    logoutWarn.textContent = "No seat token is stored in this browser.";
-    logoutToken.textContent = "";
-    logoutWrap.hidden = true;
-    document.getElementById("logoutconfirm").hidden = true;
-  }
+  document.getElementById("logoutconfirm").hidden = !token;
   logoutModal.hidden = false;
 }
 function closeLogout() { logoutModal.hidden = true; }
 
 document.getElementById("logout").onclick = openLogout;
 document.getElementById("logoutcancel").onclick = closeLogout;
-document.getElementById("copytoken").onclick = () => {
-  copyText(token, document.getElementById("copytoken"), logoutToken);
-};
-document.getElementById("logoutconfirm").onclick = () => {
-  closeLogout();
-  signOut("Logged out. Save your token if you want to rejoin this seat.");
-};
+document.getElementById("logoutconfirm").onclick = () => { leaveSeat(); };
 
 // --- Collapsible Players drawer (small viewports) ---
 const playersToggle = document.getElementById("toggleplayers");

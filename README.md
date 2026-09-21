@@ -3,17 +3,19 @@
 Correspondence multiplayer for [Root Machine Notation](https://github.com/Thanhphan1147/root-mn)
 (RMN), the machine-first notation + rules engine for the board game ROOT.
 
-Create a room, share one link per player, and play a full game of ROOT across
-devices on your own schedule. No accounts, no sign-ups — each seat gets its own
-secret token.
+The host sets up tables (rooms) from a small CLI; players take a seat at a
+table from the browser and play a full game of ROOT across devices on their own
+schedule. No accounts, no sign-ups — each seat gets its own secret token.
 
 - **Serverless-ish:** one small Go server; game state is the authoritative engine
   JSON plus an appended `.rmn` log per room.
-- **Seat tokens:** the creator picks the player count (2–4) and gets one signed
-  token per seat. Tokens are JWTs embedding the room and seat, and are also the
-  authentication.
-- **Faction picks:** each player picks an available faction on first join; the
-  pick is recorded in the room's `.rmn` header (`%Faction C marquise seat=1`).
+- **Host-arranged rooms:** rooms are created only from the administrator CLI, so
+  the host decides how many seats each table has and who is invited.
+- **Seat tokens:** taking a seat issues a signed JWT for that seat, stored by the
+  browser. Leaving frees the seat and rotates its token, so the next player gets
+  a fresh one.
+- **Faction picks:** each player picks an available faction after taking a seat;
+  the pick is recorded in the room's `.rmn` header (`%Faction C marquise seat=1`).
 - **Turn-enforced:** the server rejects any write that does not come from the
   current player's token.
 - **Hidden information:** each player receives a redacted view — other hands and
@@ -32,10 +34,14 @@ secret token.
 
 ```sh
 RMN_SECRET="$(openssl rand -hex 32)" docker compose up -d --build
+
+# Set up a table for players (host only):
+docker exec root-multiplayer rmn-mp create-room --data /app/data --seats 4 --name "Friday game"
+
 # open http://localhost:8080
 ```
 
-Room data lives in the `rmn-data` volume.
+Room data lives in the `rmn-data` volume. Players open the site and click a seat.
 
 ### HTTPS with Tailscale Funnel
 
@@ -75,37 +81,51 @@ to `*:443` (such as HAProxy) instead of the Funnel.
 
 Security notes: `RMN_SECRET` stays on the server and tokens travel over HTTPS.
 
+### Administrator CLI
+
+Rooms are created and managed with the same binary, run against the server's data
+directory. In Docker:
+
+```sh
+docker exec root-multiplayer rmn-mp create-room --data /app/data --seats 4 --name "Friday game"
+docker exec root-multiplayer rmn-mp rooms --data /app/data
+docker exec root-multiplayer rmn-mp kick --data /app/data --room <room-id> --seat 2
+```
+
+`create-room` makes a table with 2–4 empty seats. `rooms` lists every table and
+which seats are free, taken, or faction-picked. `kick` removes a seat entirely;
+once the game has started it also drops that faction's pieces from the board,
+for when a player has gone quiet. Room ids and seat numbers are printed by
+`create-room` and `rooms`.
+
 ### From source
 
 ```sh
-go run ./cmd/server --addr :8080 --data ./data --web ./web
+go run ./cmd/server serve --addr :8080 --data ./data --web ./web
 ```
 
 Set `RMN_SECRET` to a long random string in production (it signs every token).
 
 ## How a game flows
 
-1. Someone opens the client and clicks **Create room**, choosing 2–4 players.
-   Leave **Open** checked to list it for anyone to join, or uncheck it to keep it
-   invite-only.
-2. For an open room the other players pick it from the **Open rooms** list and
-   click **Join** — the server hands them the next free seat and token. For an
-   invite-only room, send each player their own link (or token) instead.
-3. Each player opens their link (or joins from the list) and picks a faction.
-   When every seat has a faction, the game starts.
+1. The host creates a table from the CLI (`create-room`), choosing 2–4 seats.
+2. Players open the site and see each table as a top-down board with a chair per
+   seat. Clicking a free chair takes that seat and stores its token.
+3. Each seated player picks an available faction. When every seat has a faction,
+   the game starts.
 4. On your turn the client shows your legal actions; submit one and the server
    applies it, saves the room, and returns your redacted view. Everyone else
    sees the change on their next fetch.
-5. **Leave** clears your local token; keep it to rejoin later. **Export** (via
-   `GET /api/export`) returns the room's `.rmn` log.
+5. **Leave** frees your seat and rotates its token; anyone can take it again from
+   the lobby. **Export** (via `GET /api/export`) returns the room's `.rmn` log.
 
 ## API
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/api/rooms` | — | `{players, names?, open?}` → `{room, tokens[]}` |
-| `GET` | `/api/rooms` | — | Open rooms with a free seat → `{rooms[]}` |
-| `POST` | `/api/join` | — | `{room}` → claim the next free seat → `{room, seat, token}` |
+| `GET` | `/api/rooms` | — | Every table with its seats → `{rooms[]}` |
+| `POST` | `/api/take` | — | `{room, seat}` → take a free seat → `{room, seat, token}` |
+| `POST` | `/api/leave` | token | Free your seat and revoke its token |
 | `GET` | `/api/state` | token | Redacted view + `ETag` (304 on `If-None-Match`) |
 | `POST` | `/api/faction` | token | `{faction}` → pick a faction (lobby) |
 | `POST` | `/api/action` | token | `{id}` → apply a legal action (turn-checked) |
@@ -122,6 +142,9 @@ the token in a first frame (`{"token":"..."}`) or as `?token=`, and only pushes
 - **State authority:** the engine state JSON is authoritative; the `.rmn` log is
   regenerated from the header + the engine's event log on every save, so the two
   never drift.
+- **Seat tokens & revocation:** a token embeds the seat's stable id and a version.
+  Leaving or ejecting bumps the version, so an old token stops working while the
+  other seats keep theirs.
 - **Hidden information vs deterministic logs:** RMN records explicit outcomes
   (exactly which cards were drawn), which would leak hidden info. The server
   keeps the full log and redacts it per viewer.
