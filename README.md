@@ -37,45 +37,43 @@ RMN_SECRET="$(openssl rand -hex 32)" docker compose up -d --build
 
 Room data lives in the `rmn-data` volume.
 
-### HTTPS with Cloudflare Tunnel
+### HTTPS with Tailscale Funnel
 
 Serving over HTTPS is recommended: it makes the browser clipboard work on
 mobile (copy buttons) and is the normal way to expose a self-hosted server
-without opening ports. Cloudflare terminates TLS at its edge and `cloudflared`
-makes outbound connections, so no port-forwarding is required.
+without opening ports.
 
-**Named tunnel (production)**
+If the host running the server is already joined to a Tailscale network
+(tailnet), you can get a free, stable HTTPS URL without owning a domain.
+Tailscale Funnel exposes `127.0.0.1:8080` to the public internet at
+`https://<host>.<tailnet>.ts.net` and provisions the TLS certificate for you.
 
-1. Add your domain to Cloudflare.
-2. In the Zero Trust dashboard go to **Networks → Tunnels → Create a tunnel** and
-   choose `cloudflared`. Copy the token from the install command.
-3. Add a **Public Hostname** route whose **Service URL** is
-   `http://root-multiplayer:8080` (the compose service name).
-4. Run it:
-
-   ```sh
-   cp .env.example .env      # set RMN_SECRET and CF_TUNNEL_TOKEN
-   docker compose --profile cloudflare up -d
-   ```
-
-5. Open `https://<your-hostname>`.
-
-Set the zone's SSL/TLS mode to **Full** (the tunnel handles edge-to-origin).
-WebSockets are supported, and the server's 25s pings keep the live socket alive.
-
-**Quick tunnel (testing only)**
+Requirements: MagicDNS and HTTPS certificates enabled for the tailnet, plus the
+`funnel` node attribute in the tailnet policy file. The first `tailscale funnel`
+run walks you through enabling both.
 
 ```sh
-docker compose --profile cloudflare-quick up -d
-docker compose logs cloudflared-quick | grep trycloudflare   # prints the URL
+# The default compose file publishes 8080 on the host, which Funnel proxies.
+tailscale funnel --bg 8080
+# Available on the internet:
+# https://<host>.<tailnet>.ts.net
+
+tailscale funnel status          # show the current Funnel
+tailscale funnel --bg 8080 off   # stop sharing
 ```
 
-Quick tunnels need no account but are rate-limited and have no SLA — use them
-for a quick demo, not for a real game.
+Funnel is free on all plans but is in beta, is bandwidth-limited (fine for a
+turn-based game), and only listens on ports `443`, `8443`, and `10000`. Because
+the URL is stable, share the link once and reuse it across games. `--bg` keeps
+it running across reboots; WebSockets are supported, and the server's 25s pings
+keep the live socket alive.
 
-Security notes: `RMN_SECRET` stays on the server and tokens now travel over
-HTTPS. Cloudflare Access can add an extra gate in front if you want one, and the
-client IP is available in `CF-Connecting-IP` if you add rate-limiting later.
+Test the URL from a device outside the tailnet (for example, a phone on
+cellular). On the server host itself, MagicDNS resolves the Funnel name to the
+host's own Tailscale IP, so a local `curl` may hit another service that is bound
+to `*:443` (such as HAProxy) instead of the Funnel.
+
+Security notes: `RMN_SECRET` stays on the server and tokens travel over HTTPS.
 
 ### From source
 
@@ -88,9 +86,13 @@ Set `RMN_SECRET` to a long random string in production (it signs every token).
 ## How a game flows
 
 1. Someone opens the client and clicks **Create room**, choosing 2–4 players.
-2. The client shows one link (or token) per seat. Send each player their own.
-3. Each player opens their link, pastes their token if needed, and picks a
-   faction. When every seat has a faction, the game starts.
+   Leave **Open** checked to list it for anyone to join, or uncheck it to keep it
+   invite-only.
+2. For an open room the other players pick it from the **Open rooms** list and
+   click **Join** — the server hands them the next free seat and token. For an
+   invite-only room, send each player their own link (or token) instead.
+3. Each player opens their link (or joins from the list) and picks a faction.
+   When every seat has a faction, the game starts.
 4. On your turn the client shows your legal actions; submit one and the server
    applies it, saves the room, and returns your redacted view. Everyone else
    sees the change on their next fetch.
@@ -101,7 +103,9 @@ Set `RMN_SECRET` to a long random string in production (it signs every token).
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/api/rooms` | — | `{players, names?}` → `{room, tokens[]}` |
+| `POST` | `/api/rooms` | — | `{players, names?, open?}` → `{room, tokens[]}` |
+| `GET` | `/api/rooms` | — | Open rooms with a free seat → `{rooms[]}` |
+| `POST` | `/api/join` | — | `{room}` → claim the next free seat → `{room, seat, token}` |
 | `GET` | `/api/state` | token | Redacted view + `ETag` (304 on `If-None-Match`) |
 | `POST` | `/api/faction` | token | `{faction}` → pick a faction (lobby) |
 | `POST` | `/api/action` | token | `{id}` → apply a legal action (turn-checked) |

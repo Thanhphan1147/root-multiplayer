@@ -7,7 +7,7 @@
 <meta name="description" content="Root Machine Notation — correspondence multiplayer for the board game ROOT." />
 <title>Root Machine Notation · correspondence</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css?v=2" />
 </head>
 <body>
 <header class="masthead">
@@ -67,12 +67,16 @@
   <a href="https://github.com/Thanhphan1147/root-multiplayer" target="_blank" rel="noopener">root-multiplayer</a>
 </footer>
 
-<!-- Landing: create or join -->
+<!-- Landing: open rooms, create, or join by token -->
 <div class="overlay" id="landing" hidden>
   <div class="card">
     <h2>Play ROOT by correspondence</h2>
-    <p>Create a room and share one link per player, or paste a token you were given.
+    <p>Join an open room below, create one, or paste a seat token you were given.
        No accounts — each seat has its own secret token.</p>
+    <label>Open rooms</label>
+    <div class="roomlist" id="roomlist"></div>
+    <button id="refreshrooms" class="btn ghost" type="button">Refresh</button>
+    <hr class="sep" />
     <div class="row2">
       <div>
         <label>New room: players</label>
@@ -87,8 +91,9 @@
         <input id="creatorname" placeholder="e.g. Cat" />
       </div>
     </div>
+    <label class="check"><input type="checkbox" id="openroom" checked /> Open — anyone can join from the list</label>
     <button id="create" class="btn" type="button">Create room</button>
-    <label>Join an existing room</label>
+    <label>Join with a token</label>
     <input id="jointoken" placeholder="paste your seat token" />
     <button id="join" class="btn ghost" type="button">Join with token</button>
     <p id="landingerr" style="color:var(--crimson)"></p>
@@ -135,6 +140,6 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

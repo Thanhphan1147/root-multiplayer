@@ -32,14 +32,15 @@ func (s *Server) hub() *Hub {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.health)
-	mux.HandleFunc("/api/rooms", s.createRoom)
+	mux.HandleFunc("/api/rooms", s.rooms)
+	mux.HandleFunc("/api/join", s.join)
 	mux.HandleFunc("/api/state", s.state)
 	mux.HandleFunc("/api/faction", s.faction)
 	mux.HandleFunc("/api/action", s.action)
 	mux.HandleFunc("/api/export", s.export)
 	mux.HandleFunc("/api/ws", s.ws)
 	if s.WebDir != "" {
-		mux.Handle("/", http.FileServer(http.Dir(s.WebDir)))
+		mux.Handle("/", noCache(http.FileServer(http.Dir(s.WebDir))))
 	}
 	return withCORS(withRecover(mux))
 }
@@ -54,6 +55,15 @@ func withRecover(next http.Handler) http.Handler {
 				writeError(w, http.StatusInternalServerError, "internal error")
 			}
 		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// noCache forces browsers to revalidate static assets so a redeploy is picked
+// up on a normal reload instead of a stale cached copy.
+func noCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
 		next.ServeHTTP(w, r)
 	})
 }
@@ -76,25 +86,61 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func (s *Server) createRoom(w http.ResponseWriter, r *http.Request) {
+// rooms lists joinable rooms on GET and creates a room on POST.
+func (s *Server) rooms(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		list, err := s.Store.List()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not list rooms")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"rooms": list})
+	case http.MethodPost:
+		var req struct {
+			Players int      `json:"players"`
+			Names   []string `json:"names"`
+			Open    bool     `json:"open"`
+		}
+		if err := decode(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		rm, tokens, err := s.Store.Create(req.Players, req.Names, req.Open)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"room": rm, "tokens": tokens})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "GET or POST only")
+	}
+}
+
+// join claims the next free seat in an open room and returns its token.
+func (s *Server) join(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
 	var req struct {
-		Players int      `json:"players"`
-		Names   []string `json:"names"`
+		Room string `json:"room"`
 	}
 	if err := decode(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	rm, tokens, err := s.Store.Create(req.Players, req.Names)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	id := strings.TrimSpace(req.Room)
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing room")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"room": rm, "tokens": tokens})
+	rm, seat, tok, err := s.Store.ClaimNext(id)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"room": rm, "seat": seat, "token": tok})
 }
 
 func (s *Server) state(w http.ResponseWriter, r *http.Request) {

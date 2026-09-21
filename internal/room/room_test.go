@@ -13,7 +13,7 @@ func newStore(t *testing.T) *Store {
 
 func TestCreateAndTokens(t *testing.T) {
 	s := newStore(t)
-	rm, tokens, err := s.Create(4, []string{"a", "b", "c", "d"})
+	rm, tokens, err := s.Create(4, []string{"a", "b", "c", "d"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,14 +29,14 @@ func TestCreateAndTokens(t *testing.T) {
 			t.Fatalf("claims = %+v", c)
 		}
 	}
-	if _, _, err := s.Create(5, nil); err == nil {
+	if _, _, err := s.Create(5, nil, true); err == nil {
 		t.Fatal("5 players should be rejected")
 	}
 }
 
 func TestPickFactionsStartsGame(t *testing.T) {
 	s := newStore(t)
-	rm, _, _ := s.Create(4, nil)
+	rm, _, _ := s.Create(4, nil, true)
 	for i, f := range []string{"MC", "ED", "WA", "VB"} {
 		room, g, err := s.PickFaction(rm.ID, i, f)
 		if err != nil {
@@ -65,7 +65,7 @@ func TestPickFactionsStartsGame(t *testing.T) {
 
 func TestTurnEnforcement(t *testing.T) {
 	s := newStore(t)
-	rm, _, _ := s.Create(4, nil)
+	rm, _, _ := s.Create(4, nil, true)
 	for i, f := range []string{"MC", "ED", "WA", "VB"} {
 		if _, _, err := s.PickFaction(rm.ID, i, f); err != nil {
 			t.Fatal(err)
@@ -87,7 +87,7 @@ func TestTurnEnforcement(t *testing.T) {
 
 func TestRedaction(t *testing.T) {
 	s := newStore(t)
-	rm, _, _ := s.Create(4, nil)
+	rm, _, _ := s.Create(4, nil, true)
 	for i, f := range []string{"MC", "ED", "WA", "VB"} {
 		if _, _, err := s.PickFaction(rm.ID, i, f); err != nil {
 			t.Fatal(err)
@@ -119,7 +119,7 @@ func TestRedaction(t *testing.T) {
 
 func TestTwoPlayerSetupCompletes(t *testing.T) {
 	s := newStore(t)
-	rm, _, _ := s.Create(2, nil)
+	rm, _, _ := s.Create(2, nil, true)
 	if _, _, err := s.PickFaction(rm.ID, 0, "MC"); err != nil {
 		t.Fatal(err)
 	}
@@ -147,5 +147,143 @@ func TestTwoPlayerSetupCompletes(t *testing.T) {
 			t.Fatalf("apply %s: %v", acts[0].ID, err)
 		}
 		_, g, _ = s.Load(rm.ID)
+	}
+}
+
+func TestClaimNextSeat(t *testing.T) {
+	s := newStore(t)
+	rm, _, err := s.Create(4, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rm.Seats[0].Claimed {
+		t.Fatal("the creator's seat should be reserved")
+	}
+	for i, want := range []int{1, 2, 3} {
+		r, seat, tok, err := s.ClaimNext(rm.ID)
+		if err != nil {
+			t.Fatalf("claim %d: %v", i, err)
+		}
+		if seat != want {
+			t.Fatalf("claimed seat %d, want %d", seat, want)
+		}
+		if !r.Seats[seat].Claimed {
+			t.Fatalf("seat %d should be marked claimed", seat)
+		}
+		c, err := VerifyToken(s.Secret, tok)
+		if err != nil || c.Room != rm.ID || c.Seat != seat {
+			t.Fatalf("bad token for seat %d: %v", seat, err)
+		}
+	}
+	if _, _, _, err := s.ClaimNext(rm.ID); err == nil {
+		t.Fatal("a full room should reject the join")
+	}
+}
+
+func TestPrivateRoomIsInviteOnly(t *testing.T) {
+	s := newStore(t)
+	rm, _, err := s.Create(3, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := s.ClaimNext(rm.ID); err == nil {
+		t.Fatal("invite-only rooms should not be joinable")
+	}
+	list, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("invite-only room should not be listed: %+v", list)
+	}
+}
+
+func TestListOpenRooms(t *testing.T) {
+	s := newStore(t)
+	open, _, err := s.Create(3, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Create(3, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != open.ID {
+		t.Fatalf("list = %+v", list)
+	}
+	if list[0].OpenSeats != 2 {
+		t.Fatalf("openSeats = %d, want 2", list[0].OpenSeats)
+	}
+	for i := 0; i < 2; i++ {
+		if _, _, _, err := s.ClaimNext(open.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if list, _ = s.List(); len(list) != 0 {
+		t.Fatalf("full room should not be listed: %+v", list)
+	}
+}
+
+func TestPendingPlayerActsDuringBattle(t *testing.T) {
+	s := newStore(t)
+	rm, _, err := s.Create(2, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.PickFaction(rm.ID, 0, "MC"); err != nil {
+		t.Fatal(err)
+	}
+	started, g, err := s.PickFaction(rm.ID, 1, "ED")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seatOf := map[string]int{}
+	for i, st := range started.Seats {
+		seatOf[st.Faction] = i
+	}
+	// Drive setup to completion; each step is submitted by the right seat.
+	for g.SetupMode {
+		acts := g.LegalActions()
+		if len(acts) == 0 {
+			t.Fatal("setup stalled")
+		}
+		if _, _, err := s.ApplyAction(rm.ID, seatOf[string(g.Current)], acts[0].ID); err != nil {
+			t.Fatalf("setup %s: %v", acts[0].ID, err)
+		}
+		_, g, _ = s.Load(rm.ID)
+	}
+
+	// Force a battle where MC is the turn player but ED must assign the hits.
+	g.Current = root.MC
+	g.Clearings["C1"].Warriors[root.MC] = 3
+	g.Clearings["C1"].Warriors[root.ED] = 3
+	g.Battle = &root.BattleState{
+		Clearing: "C1", Attacker: root.MC, Defender: root.ED,
+		Stage: root.StageHits, HitSide: root.ED, Remaining: 1, AtkHits: 1,
+	}
+	g.Pending = &root.Pending{Kind: root.PendingBattleHits, Player: root.ED}
+	if err := s.Save(started, g); err != nil {
+		t.Fatal(err)
+	}
+
+	var hit *root.Action
+	acts := g.LegalActions()
+	for i := range acts {
+		if acts[i].Kind == "battle-hit" {
+			hit = &acts[i]
+			break
+		}
+	}
+	if hit == nil {
+		t.Fatal("no battle-hit action available")
+	}
+	if _, _, err := s.ApplyAction(rm.ID, 0, hit.ID); err == nil {
+		t.Fatal("the turn player should not act on the defender's pending hits")
+	}
+	if _, _, err := s.ApplyAction(rm.ID, 1, hit.ID); err != nil {
+		t.Fatalf("the pending player should be allowed to act: %v", err)
 	}
 }

@@ -168,3 +168,35 @@ func TestWebSocketNotify(t *testing.T) {
 		t.Fatalf("expected changed, got %v", changed)
 	}
 }
+
+func TestListAndJoinHTTP(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	_, created := do(t, ts, "POST", "/api/rooms", "", map[string]any{"players": 3, "open": true}, nil)
+	roomID := created["room"].(map[string]any)["id"].(string)
+
+	resp, list := do(t, ts, "GET", "/api/rooms", "", nil, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("list: %d", resp.StatusCode)
+	}
+	if rooms, _ := list["rooms"].([]any); len(rooms) != 1 {
+		t.Fatalf("expected 1 open room, got %v", list["rooms"])
+	}
+
+	resp, joined := do(t, ts, "POST", "/api/join", "", map[string]any{"room": roomID}, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("join: %d (%v)", resp.StatusCode, joined)
+	}
+	tok, _ := joined["token"].(string)
+	if tok == "" {
+		t.Fatal("join should return a token")
+	}
+	resp, state := do(t, ts, "GET", "/api/state", tok, nil, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("state with joined token: %d", resp.StatusCode)
+	}
+	if _, ok := state["room"]; !ok {
+		t.Fatalf("state missing room: %v", state)
+	}
+}

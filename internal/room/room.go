@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ type Seat struct {
 	Index   int    `json:"index"`
 	Name    string `json:"name,omitempty"`
 	Faction string `json:"faction,omitempty"` // "", or one of C/ED/WA/VB
+	Claimed bool   `json:"claimed,omitempty"` // a player owns this seat
 }
 
 // Room is the persistent room metadata.
@@ -27,9 +29,19 @@ type Room struct {
 	ID      string    `json:"id"`
 	Created time.Time `json:"created"`
 	Players int       `json:"players"`
+	Open    bool      `json:"open,omitempty"` // anyone may claim a free seat
 	Seats   []Seat    `json:"seats"`
 	Started bool      `json:"started"`
 	First   string    `json:"first,omitempty"`
+}
+
+// Summary is a token-free view of a joinable room for the lobby list.
+type Summary struct {
+	ID        string    `json:"id"`
+	Created   time.Time `json:"created"`
+	Players   int       `json:"players"`
+	OpenSeats int       `json:"openSeats"`
+	Seats     []Seat    `json:"seats"`
 }
 
 // Store persists rooms on disk.
@@ -44,15 +56,18 @@ func (s *Store) roomPath(id string) string  { return filepath.Join(s.roomDir(id)
 func (s *Store) statePath(id string) string { return filepath.Join(s.roomDir(id), "state.json") }
 func (s *Store) rmnPath(id string) string   { return filepath.Join(s.roomDir(id), "game.rmn") }
 
-// Create makes a new room and returns it plus one token per seat.
-func (s *Store) Create(players int, names []string) (*Room, []string, error) {
+// Create makes a new room and returns it plus one token per seat. When open is
+// true the room is listed so anyone can claim a free seat: the creator keeps
+// seat 1 and the rest stay open. When open is false every seat is reserved for
+// the returned tokens (invite-only, not listed).
+func (s *Store) Create(players int, names []string, open bool) (*Room, []string, error) {
 	if players < 2 || players > 4 {
 		return nil, nil, errors.New("players must be between 2 and 4")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	room := &Room{ID: randomID(4), Created: time.Now().UTC(), Players: players}
+	room := &Room{ID: randomID(4), Created: time.Now().UTC(), Players: players, Open: open}
 	tokens := make([]string, players)
 	for i := 0; i < players; i++ {
 		seat := Seat{Index: i}
@@ -62,6 +77,13 @@ func (s *Store) Create(players int, names []string) (*Room, []string, error) {
 		room.Seats = append(room.Seats, seat)
 		tokens[i] = IssueToken(s.Secret, room.ID, i, 0)
 	}
+	if open {
+		room.Seats[0].Claimed = true // reserve the creator's seat
+	} else {
+		for i := range room.Seats {
+			room.Seats[i].Claimed = true // invite-only: every seat is spoken for
+		}
+	}
 	if err := os.MkdirAll(s.roomDir(room.ID), 0o755); err != nil {
 		return nil, nil, err
 	}
@@ -69,6 +91,78 @@ func (s *Store) Create(players int, names []string) (*Room, []string, error) {
 		return nil, nil, err
 	}
 	return room, tokens, nil
+}
+
+// ClaimNext assigns the lowest-index unclaimed seat in an open, not-yet-started
+// room and returns a fresh token for it.
+func (s *Store) ClaimNext(id string) (*Room, int, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	room, g, err := s.Load(id)
+	if err != nil {
+		return nil, -1, "", err
+	}
+	if !room.Open {
+		return room, -1, "", errors.New("this room is invite-only")
+	}
+	if room.Started {
+		return room, -1, "", errors.New("this game has already started")
+	}
+	for i := range room.Seats {
+		if room.Seats[i].Claimed {
+			continue
+		}
+		room.Seats[i].Claimed = true
+		if err := s.Save(room, g); err != nil {
+			return room, -1, "", err
+		}
+		return room, i, IssueToken(s.Secret, room.ID, i, 0), nil
+	}
+	return room, -1, "", errors.New("no open seats")
+}
+
+// List returns open rooms that still have a free seat, newest first.
+func (s *Store) List() ([]Summary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := os.ReadDir(filepath.Join(s.Dir, "rooms"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []Summary{}, nil
+		}
+		return nil, err
+	}
+	out := []Summary{}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		room := &Room{}
+		if err := readJSON(s.roomPath(e.Name()), room); err != nil {
+			continue
+		}
+		if !room.Open || room.Started {
+			continue
+		}
+		open := 0
+		for _, st := range room.Seats {
+			if !st.Claimed {
+				open++
+			}
+		}
+		if open == 0 {
+			continue
+		}
+		out = append(out, Summary{
+			ID:        room.ID,
+			Created:   room.Created,
+			Players:   room.Players,
+			OpenSeats: open,
+			Seats:     room.Seats,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Created.After(out[j].Created) })
+	return out, nil
 }
 
 // Load reads a room and, if started, its game state.
@@ -115,6 +209,7 @@ func (s *Store) PickFaction(id string, seat int, faction string) (*Room, *root.G
 		}
 	}
 	room.Seats[seat].Faction = string(f)
+	room.Seats[seat].Claimed = true
 
 	if allPicked(room) {
 		factions := make([]root.Faction, 0, len(room.Seats))
@@ -155,7 +250,13 @@ func (s *Store) ApplyAction(id string, seat int, actionID string) (*Room, *root.
 	if seat < 0 || seat >= len(room.Seats) {
 		return room, g, errors.New("invalid seat")
 	}
-	if room.Seats[seat].Faction != string(g.Current) {
+	// Pending choices (battle hits, discards, field hospitals) belong to the
+	// player the engine is waiting on, which is not always g.Current.
+	actor := g.Current
+	if g.Pending != nil {
+		actor = g.Pending.Player
+	}
+	if room.Seats[seat].Faction != string(actor) {
 		return room, g, fmt.Errorf("it is not your turn")
 	}
 	if err := g.Apply(root.Action{ID: actionID}); err != nil {

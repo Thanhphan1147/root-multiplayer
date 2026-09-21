@@ -189,6 +189,7 @@ function showOverlay(id) {
   for (const x of ["landing", "created", "lobby"]) {
     document.getElementById(x).hidden = (x !== id);
   }
+  if (id === "landing") loadRooms();
 }
 function hideOverlays() {
   for (const x of ["landing", "created", "lobby"]) {
@@ -668,6 +669,61 @@ function signOut(msg) {
   showOverlay("landing");
 }
 
+// --- Open room list (landing) ---
+async function loadRooms() {
+  const el = document.getElementById("roomlist");
+  if (!el) return;
+  el.innerHTML = '<div class="roomempty">Loading…</div>';
+  let r;
+  try {
+    r = await api("/api/rooms");
+  } catch (e) {
+    el.innerHTML = '<div class="roomempty">Could not load rooms.</div>';
+    return;
+  }
+  const rooms = (r.data && r.data.rooms) || [];
+  el.innerHTML = "";
+  if (rooms.length === 0) {
+    el.innerHTML = '<div class="roomempty">No open rooms — create one below.</div>';
+    return;
+  }
+  for (const room of rooms) el.append(roomRow(room));
+}
+
+function roomRow(room) {
+  const row = document.createElement("div");
+  row.className = "roomrow";
+  const taken = (room.seats || []).filter(s => s.faction).map(s => s.faction);
+  const meta = document.createElement("div");
+  meta.className = "roommeta";
+  meta.innerHTML =
+    `<span class="rid">room ${room.id}</span>` +
+    `<span class="rmeta">${room.openSeats}/${room.players} seats open</span>` +
+    (taken.length
+      ? `<span class="rfactions">${taken.map(f => `<span class="chip ${f}">${f}</span>`).join("")}</span>`
+      : "");
+  const btn = document.createElement("button");
+  btn.className = "btn";
+  btn.type = "button";
+  btn.textContent = "Join";
+  btn.onclick = () => joinRoom(room.id, btn);
+  row.append(meta, btn);
+  return row;
+}
+
+async function joinRoom(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Joining…"; }
+  let r;
+  try {
+    r = await api("/api/join", { method: "POST", body: JSON.stringify({ room: id }) });
+  } catch (e) {
+    r = { data: { error: "network error" } };
+  }
+  if (r.data && r.data.token) { setToken(r.data.token); return; }
+  if (btn) { btn.disabled = false; btn.textContent = "Join"; }
+  document.getElementById("landingerr").textContent = (r.data && r.data.error) || "could not join that room";
+}
+
 document.getElementById("create").onclick = async () => {
   const players = parseInt(document.getElementById("playerCount").value, 10);
   if (!Number.isInteger(players) || players < 2 || players > 4) {
@@ -675,7 +731,13 @@ document.getElementById("create").onclick = async () => {
     return;
   }
   const name = document.getElementById("creatorname").value.trim();
-  const r = await api("/api/rooms", { method: "POST", body: JSON.stringify({ players, names: name ? [name] : [] }) });
+  const open = document.getElementById("openroom").checked;
+  let r;
+  try {
+    r = await api("/api/rooms", { method: "POST", body: JSON.stringify({ players, names: name ? [name] : [], open }) });
+  } catch (e) {
+    r = { data: { error: "network error" } };
+  }
   if (r.data && r.data.room) {
     renderTokens(r.data.room.id, r.data.tokens);
     showOverlay("created");
@@ -683,6 +745,7 @@ document.getElementById("create").onclick = async () => {
     document.getElementById("landingerr").textContent = (r.data && r.data.error) || "failed to create room";
   }
 };
+document.getElementById("refreshrooms").onclick = () => { loadRooms(); };
 document.getElementById("join").onclick = () => {
   const tok = document.getElementById("jointoken").value.trim();
   if (tok) setToken(tok);

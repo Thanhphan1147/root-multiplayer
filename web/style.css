@@ -547,6 +547,18 @@ button:focus-visible, a:focus-visible, .clearing:focus-visible {
 .tokrow { display: flex; align-items: center; gap: 0.4rem; }
 .tokrow code { flex: 1; font-family: var(--mono); font-size: 0.66rem; padding: 0.3rem 0.4rem; border: 1px solid var(--line);
   border-radius: var(--radius); background: var(--paper-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roomlist { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.3rem; max-height: 34vh; overflow: auto; }
+.roomrow { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-2); }
+.roomrow .btn { margin-top: 0; }
+.roommeta { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.roommeta .rid { font-family: var(--mono); font-size: 0.72rem; font-weight: 700; }
+.roommeta .rmeta { font-family: var(--mono); font-size: 0.62rem; color: var(--ink-soft); }
+.roommeta .rfactions { display: flex; flex-wrap: wrap; gap: 0.2rem; }
+.roomempty { padding: 0.3rem 0; font-family: var(--mono); font-size: 0.66rem; color: var(--ink-soft); }
+.card .check { display: flex; align-items: center; gap: 0.45rem; text-transform: none; letter-spacing: 0; font-size: 0.7rem; }
+.card .check input { width: auto; }
+.sep { border: none; border-top: 1px solid var(--line); margin: 0.9rem 0 0.2rem; }
 .factionpick { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
 .factionpick button { flex: 1 1 6rem; font-family: var(--mono); font-size: 0.75rem; padding: 0.6rem; border: 1.5px solid var(--line-strong);
   border-radius: var(--radius); background: var(--paper); cursor: pointer; }
