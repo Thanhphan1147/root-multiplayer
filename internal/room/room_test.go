@@ -116,3 +116,36 @@ func TestRedaction(t *testing.T) {
 		t.Fatalf("hash should be blank, got %v", snap["hash"])
 	}
 }
+
+func TestTwoPlayerSetupCompletes(t *testing.T) {
+	s := newStore(t)
+	rm, _, _ := s.Create(2, nil)
+	if _, _, err := s.PickFaction(rm.ID, 0, "MC"); err != nil {
+		t.Fatal(err)
+	}
+	started, g, err := s.PickFaction(rm.ID, 1, "ED")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !started.Started {
+		t.Fatal("game should have started")
+	}
+	// Drive setup through the store; this used to panic when the Eyrie chose a
+	// leader because the setup machine assumed the Alliance was present.
+	for g.SetupMode {
+		acts := g.LegalActions()
+		if len(acts) == 0 {
+			t.Fatalf("stuck at stage %s", g.SetupStage)
+		}
+		seat := 0
+		for i, st := range started.Seats {
+			if st.Faction == string(g.Current) {
+				seat = i
+			}
+		}
+		if _, _, err := s.ApplyAction(rm.ID, seat, acts[0].ID); err != nil {
+			t.Fatalf("apply %s: %v", acts[0].ID, err)
+		}
+		_, g, _ = s.Load(rm.ID)
+	}
+}
