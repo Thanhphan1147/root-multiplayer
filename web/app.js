@@ -721,6 +721,22 @@ document.getElementById("logoutconfirm").onclick = () => {
   signOut("Logged out. Save your token if you want to rejoin this seat.");
 };
 
+// --- Collapsible Players drawer (small viewports) ---
+const playersToggle = document.getElementById("toggleplayers");
+const drawerBackdrop = document.getElementById("drawerbackdrop");
+function setDrawer(open) {
+  document.body.classList.toggle("players-open", open);
+  if (playersToggle) playersToggle.setAttribute("aria-expanded", open ? "true" : "false");
+  if (drawerBackdrop) drawerBackdrop.hidden = !open;
+}
+if (playersToggle) {
+  playersToggle.onclick = () => setDrawer(!document.body.classList.contains("players-open"));
+}
+if (drawerBackdrop) {
+  drawerBackdrop.onclick = () => setDrawer(false);
+}
+window.addEventListener("keydown", e => { if (e.key === "Escape") setDrawer(false); });
+
 // --- Boot ---
 (async function boot() {
   autofetch = autofetchBox.checked;

@@ -18,6 +18,7 @@
     </div>
     <div class="turnbar" id="turnbar" aria-live="polite"></div>
     <div class="header-controls">
+      <button id="toggleplayers" class="btn ghost" type="button" aria-controls="players" aria-expanded="false">Players</button>
       <label title="Instant updates via WebSocket (falls back to polling)">
         <span class="dot" id="livedot"></span>
         <input type="checkbox" id="live" /> live
@@ -33,6 +34,8 @@
     </div>
   </div>
 </header>
+
+<div class="drawer-backdrop" id="drawerbackdrop" hidden></div>
 
 <main class="bench">
   <aside class="players" id="players" aria-label="Players"></aside>
