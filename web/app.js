@@ -752,7 +752,11 @@ function pixelRect(x, y, w, h, cls) {
 function chair(room, seat, cx, cy) {
   const NS = "http://www.w3.org/2000/svg";
   const g = document.createElementNS(NS, "g");
-  g.setAttribute("class", "pseat " + (seat.occupied ? "occupied " : "free ") + (seat.faction || ""));
+  // A chair is takeable before the game starts, or to take over an abandoned
+  // faction afterwards. The unused chairs at a 4-seat table stay closed.
+  const takeable = !seat.occupied && (!room.started || !!seat.faction);
+  const state = seat.occupied ? "occupied" : (takeable ? "free" : "empty");
+  g.setAttribute("class", "pseat " + state + " " + (seat.faction || ""));
   g.setAttribute("transform", `translate(${cx} ${cy})`);
   g.append(pixelRect(-7, -7, 14, 14, "seat-shadow"));
   g.append(pixelRect(-6, -6, 12, 12, "seat-body"));
@@ -766,8 +770,10 @@ function chair(room, seat, cx, cy) {
   label.textContent = seat.faction || String(seat.index + 1);
   g.append(label);
 
-  if (seat.occupied) {
-    g.setAttribute("aria-label", "Seat " + (seat.index + 1) + " taken" + (seat.faction ? " by " + seat.faction : ""));
+  if (!takeable) {
+    g.setAttribute("aria-label", seat.occupied
+      ? "Seat " + (seat.index + 1) + " taken" + (seat.faction ? " by " + seat.faction : "")
+      : "Seat " + (seat.index + 1) + " closed");
     return g;
   }
   g.setAttribute("role", "button");

@@ -59,16 +59,13 @@ func (s *Store) roomPath(id string) string  { return filepath.Join(s.roomDir(id)
 func (s *Store) statePath(id string) string { return filepath.Join(s.roomDir(id), "state.json") }
 func (s *Store) rmnPath(id string) string   { return filepath.Join(s.roomDir(id), "game.rmn") }
 
-// Create makes an empty room with the given number of seats. It is the
-// administrator's entry point; players take seats from the browser.
-func (s *Store) Create(name string, seats int) (*Room, error) {
-	if seats < 2 || seats > 4 {
-		return nil, errors.New("seats must be between 2 and 4")
-	}
+// Create makes a four-seat table. Players take seats from the browser; the game
+// starts with however many seats are taken (2-4) once they have all picked.
+func (s *Store) Create(name string) (*Room, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	room := &Room{ID: randomID(4), Name: strings.TrimSpace(name), Created: time.Now().UTC()}
-	for i := 0; i < seats; i++ {
+	for i := 0; i < 4; i++ {
 		room.Seats = append(room.Seats, Seat{ID: randomID(4), Index: i})
 	}
 	if err := os.MkdirAll(s.roomDir(room.ID), 0o755); err != nil {
@@ -139,13 +136,6 @@ func (r *Room) seatIndex(id string) int {
 	return -1
 }
 
-// renumber makes seat Index values match their slice position.
-func (r *Room) renumber() {
-	for i := range r.Seats {
-		r.Seats[i].Index = i
-	}
-}
-
 // Auth verifies a token and returns the room, seat, and (if started) game it
 // belongs to. It rejects tokens for seats that have since been freed or removed.
 func (s *Store) Auth(token string) (*Room, Seat, *root.Game, error) {
@@ -178,6 +168,11 @@ func (s *Store) Take(id, seatID string) (*Room, *root.Game, int, string, error) 
 	}
 	if room.Seats[i].Occupied {
 		return room, g, -1, "", errors.New("that seat is already taken")
+	}
+	// After the game starts only an abandoned faction's seat can be taken over;
+	// the unused chairs at a 4-seat table stay closed.
+	if room.Started && room.Seats[i].Faction == "" {
+		return room, g, -1, "", errors.New("the game has already started")
 	}
 	room.Seats[i].Occupied = true
 	if err := s.Save(room, g); err != nil {
@@ -212,8 +207,9 @@ func (s *Store) Leave(id, seatID string) (*Room, *root.Game, error) {
 	return room, g, nil
 }
 
-// Kick removes a seat and, once the game has started, drops its faction from
-// the game entirely. Remaining seats are renumbered. Administrator only.
+// Kick empties a seat and, once the game has started, drops its faction from the
+// game entirely (pieces and all). The table keeps its four seats: the chair is
+// left empty and is no longer takeable. Administrator only.
 func (s *Store) Kick(id, seatID string) (*Room, *root.Game, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -226,8 +222,9 @@ func (s *Store) Kick(id, seatID string) (*Room, *root.Game, error) {
 		return room, g, errors.New("no such seat")
 	}
 	faction := root.Faction(room.Seats[i].Faction)
-	room.Seats = append(room.Seats[:i:i], room.Seats[i+1:]...)
-	room.renumber()
+	room.Seats[i].Occupied = false
+	room.Seats[i].Faction = ""
+	room.Seats[i].Version++
 	if room.Started && g != nil && faction != "" {
 		g.RemoveFaction(faction)
 	}
@@ -273,6 +270,9 @@ func (s *Store) PickFaction(id, seatID, faction string) (*Room, *root.Game, erro
 	if allPicked(room) {
 		factions := make([]root.Faction, 0, len(room.Seats))
 		for _, st := range room.Seats {
+			if st.Faction == "" {
+				continue
+			}
 			factions = append(factions, root.Faction(st.Faction))
 		}
 		first := factions[0]
@@ -383,16 +383,20 @@ func (s *Store) Export(id string) (string, error) {
 	return s.RMN(room, g), nil
 }
 
+// allPicked reports whether every taken seat has a faction and at least two
+// players are seated, i.e. the game is ready to start.
 func allPicked(room *Room) bool {
-	if len(room.Seats) == 0 {
-		return false
-	}
+	seated := 0
 	for _, st := range room.Seats {
+		if !st.Occupied {
+			continue
+		}
+		seated++
 		if st.Faction == "" {
 			return false
 		}
 	}
-	return true
+	return seated >= 2
 }
 
 func (s *Store) saveRoom(room *Room) error {

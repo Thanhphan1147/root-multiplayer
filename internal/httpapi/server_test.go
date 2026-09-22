@@ -66,7 +66,7 @@ func TestEndToEnd(t *testing.T) {
 	ts, store := newTestServer(t)
 	defer ts.Close()
 
-	rm, err := store.Create("Test", 4)
+	rm, err := store.Create("Test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestListAndTakeHTTP(t *testing.T) {
 	ts, store := newTestServer(t)
 	defer ts.Close()
 
-	rm, err := store.Create("Alpha", 2)
+	rm, err := store.Create("Alpha")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestLeaveInvalidatesToken(t *testing.T) {
 	ts, store := newTestServer(t)
 	defer ts.Close()
 
-	rm, _ := store.Create("", 2)
+	rm, _ := store.Create("")
 	_, out := do(t, ts, "POST", "/api/take", "", map[string]any{"room": rm.ID, "seat": rm.Seats[0].ID}, nil)
 	tok, _ := out["token"].(string)
 	if tok == "" {
@@ -187,7 +187,7 @@ func TestWebSocketNotify(t *testing.T) {
 	ts, store := newTestServer(t)
 	defer ts.Close()
 
-	rm, _ := store.Create("", 4)
+	rm, _ := store.Create("")
 	tokens := takeAll(t, ts, rm)
 	for i, f := range []string{"MC", "ED", "WA", "VB"} {
 		do(t, ts, "POST", "/api/faction", tokens[i], map[string]any{"faction": f}, nil)

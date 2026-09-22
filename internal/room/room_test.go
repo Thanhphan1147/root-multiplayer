@@ -11,14 +11,17 @@ func newStore(t *testing.T) *Store {
 	return &Store{Dir: t.TempDir(), Secret: []byte("test-secret")}
 }
 
-// takeSeats takes every seat in a room and returns their ids and tokens.
-func takeSeats(t *testing.T, s *Store, roomID string) (ids, tokens []string) {
+// takeN takes the first n seats of a table and returns their ids and tokens.
+func takeN(t *testing.T, s *Store, roomID string, n int) (ids, tokens []string) {
 	t.Helper()
 	rm, _, err := s.Load(roomID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, st := range rm.Seats {
+	if n > len(rm.Seats) {
+		t.Fatalf("take %d seats from a %d-seat table", n, len(rm.Seats))
+	}
+	for _, st := range rm.Seats[:n] {
 		_, _, _, tok, err := s.Take(roomID, st.ID)
 		if err != nil {
 			t.Fatalf("take seat %s: %v", st.ID, err)
@@ -31,17 +34,14 @@ func takeSeats(t *testing.T, s *Store, roomID string) (ids, tokens []string) {
 
 func TestCreateAndTakeSeat(t *testing.T) {
 	s := newStore(t)
-	rm, err := s.Create("Test", 4)
+	rm, err := s.Create("Test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(rm.Seats) != 4 {
-		t.Fatalf("seats = %d, want 4", len(rm.Seats))
+		t.Fatalf("a table should have 4 seats, got %d", len(rm.Seats))
 	}
-	if _, err := s.Create("bad", 5); err == nil {
-		t.Fatal("5 seats should be rejected")
-	}
-	ids, tokens := takeSeats(t, s, rm.ID)
+	ids, tokens := takeN(t, s, rm.ID, 4)
 	for i, tok := range tokens {
 		_, seat, _, err := s.Auth(tok)
 		if err != nil {
@@ -58,8 +58,8 @@ func TestCreateAndTakeSeat(t *testing.T) {
 
 func TestLeaveRotatesToken(t *testing.T) {
 	s := newStore(t)
-	rm, _ := s.Create("", 2)
-	ids, tokens := takeSeats(t, s, rm.ID)
+	rm, _ := s.Create("")
+	ids, tokens := takeN(t, s, rm.ID, 2)
 
 	if _, _, err := s.Leave(rm.ID, ids[0]); err != nil {
 		t.Fatal(err)
@@ -81,8 +81,8 @@ func TestLeaveRotatesToken(t *testing.T) {
 
 func TestKickDropsFaction(t *testing.T) {
 	s := newStore(t)
-	rm, _ := s.Create("", 4)
-	ids, tokens := takeSeats(t, s, rm.ID)
+	rm, _ := s.Create("")
+	ids, tokens := takeN(t, s, rm.ID, 4)
 	for i, f := range []string{"MC", "ED", "WA", "VB"} {
 		if _, _, err := s.PickFaction(rm.ID, ids[i], f); err != nil {
 			t.Fatalf("pick %s: %v", f, err)
@@ -92,29 +92,55 @@ func TestKickDropsFaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(updated.Seats) != 3 {
-		t.Fatalf("seats = %d, want 3", len(updated.Seats))
+	if len(updated.Seats) != 4 {
+		t.Fatalf("the table should keep 4 seats, got %d", len(updated.Seats))
 	}
 	for i, st := range updated.Seats {
-		if st.ID == ids[1] {
-			t.Fatal("the removed seat is still present")
-		}
 		if st.Index != i {
-			t.Fatalf("seats not renumbered: %+v", updated.Seats)
+			t.Fatalf("seat index drift: %+v", updated.Seats)
 		}
+	}
+	if kicked := updated.Seats[1]; kicked.Occupied || kicked.Faction != "" {
+		t.Fatalf("the kicked chair should be empty: %+v", kicked)
 	}
 	if _, ok := g.Players[root.ED]; ok {
 		t.Fatal("ED should be dropped from the game")
 	}
 	if _, _, _, err := s.Auth(tokens[1]); err == nil {
-		t.Fatal("the removed seat's token should be rejected")
+		t.Fatal("the kicked seat's token should be rejected")
+	}
+}
+
+func TestStartWithTwoOfFour(t *testing.T) {
+	s := newStore(t)
+	rm, _ := s.Create("")
+	ids, _ := takeN(t, s, rm.ID, 2)
+	if _, _, err := s.PickFaction(rm.ID, ids[0], "MC"); err != nil {
+		t.Fatal(err)
+	}
+	started, g, err := s.PickFaction(rm.ID, ids[1], "ED")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !started.Started || g == nil {
+		t.Fatal("a two-player game should start")
+	}
+	if len(started.Seats) != 4 {
+		t.Fatalf("the table should keep 4 seats, got %d", len(started.Seats))
+	}
+	free := started.Seats[2]
+	if free.Occupied || free.Faction != "" {
+		t.Fatalf("an unused chair should stay empty: %+v", free)
+	}
+	if _, _, _, _, err := s.Take(rm.ID, free.ID); err == nil {
+		t.Fatal("an unused chair should not be takeable after the game starts")
 	}
 }
 
 func TestPickFactionsStartsGame(t *testing.T) {
 	s := newStore(t)
-	rm, _ := s.Create("", 4)
-	ids, _ := takeSeats(t, s, rm.ID)
+	rm, _ := s.Create("")
+	ids, _ := takeN(t, s, rm.ID, 4)
 	for i, f := range []string{"MC", "ED", "WA", "VB"} {
 		room, g, err := s.PickFaction(rm.ID, ids[i], f)
 		if err != nil {
@@ -139,8 +165,8 @@ func TestPickFactionsStartsGame(t *testing.T) {
 
 func TestTurnEnforcement(t *testing.T) {
 	s := newStore(t)
-	rm, _ := s.Create("", 2)
-	ids, _ := takeSeats(t, s, rm.ID)
+	rm, _ := s.Create("")
+	ids, _ := takeN(t, s, rm.ID, 2)
 	if _, _, err := s.PickFaction(rm.ID, ids[0], "MC"); err != nil {
 		t.Fatal(err)
 	}
@@ -162,8 +188,8 @@ func TestTurnEnforcement(t *testing.T) {
 
 func TestRedaction(t *testing.T) {
 	s := newStore(t)
-	rm, _ := s.Create("", 4)
-	ids, _ := takeSeats(t, s, rm.ID)
+	rm, _ := s.Create("")
+	ids, _ := takeN(t, s, rm.ID, 4)
 	for i, f := range []string{"MC", "ED", "WA", "VB"} {
 		if _, _, err := s.PickFaction(rm.ID, ids[i], f); err != nil {
 			t.Fatal(err)
@@ -194,8 +220,8 @@ func TestRedaction(t *testing.T) {
 
 func TestTwoPlayerSetupCompletes(t *testing.T) {
 	s := newStore(t)
-	rm, _ := s.Create("", 2)
-	ids, _ := takeSeats(t, s, rm.ID)
+	rm, _ := s.Create("")
+	ids, _ := takeN(t, s, rm.ID, 2)
 	if _, _, err := s.PickFaction(rm.ID, ids[0], "MC"); err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +241,7 @@ func TestTwoPlayerSetupCompletes(t *testing.T) {
 		}
 		seatID := ""
 		for i, st := range started.Seats {
-			if st.Faction == string(g.Current) {
+			if st.Occupied && st.Faction == string(g.Current) {
 				seatID = ids[i]
 			}
 		}
@@ -228,8 +254,8 @@ func TestTwoPlayerSetupCompletes(t *testing.T) {
 
 func TestListRooms(t *testing.T) {
 	s := newStore(t)
-	a, _ := s.Create("Alpha", 2)
-	b, _ := s.Create("Beta", 3)
+	a, _ := s.Create("Alpha")
+	b, _ := s.Create("Beta")
 	list, err := s.List()
 	if err != nil {
 		t.Fatal(err)
@@ -291,8 +317,8 @@ func TestPendingChoiceRedaction(t *testing.T) {
 func startedBattle(t *testing.T) (*Store, *Room, *root.Game, map[string]string) {
 	t.Helper()
 	s := newStore(t)
-	rm, _ := s.Create("", 2)
-	ids, _ := takeSeats(t, s, rm.ID)
+	rm, _ := s.Create("")
+	ids, _ := takeN(t, s, rm.ID, 2)
 	if _, _, err := s.PickFaction(rm.ID, ids[0], "MC"); err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +328,9 @@ func startedBattle(t *testing.T) (*Store, *Room, *root.Game, map[string]string) 
 	}
 	seatOf := map[string]string{}
 	for i, st := range started.Seats {
-		seatOf[st.Faction] = ids[i]
+		if st.Faction != "" {
+			seatOf[st.Faction] = ids[i]
+		}
 	}
 	for g.SetupMode {
 		acts := g.LegalActions()

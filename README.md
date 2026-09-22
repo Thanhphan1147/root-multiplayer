@@ -10,7 +10,8 @@ schedule. No accounts, no sign-ups — each seat gets its own secret token.
 - **Serverless-ish:** one small Go server; game state is the authoritative engine
   JSON plus an appended `.rmn` log per room.
 - **Host-arranged rooms:** rooms are created only from the administrator CLI, so
-  the host decides how many seats each table has and who is invited.
+  the host controls the tables. Every table has four seats and a game can start
+  with 2–4 of them taken.
 - **Seat tokens:** taking a seat issues a signed JWT for that seat, stored by the
   browser. Leaving frees the seat and rotates its token, so the next player gets
   a fresh one.
@@ -36,7 +37,7 @@ schedule. No accounts, no sign-ups — each seat gets its own secret token.
 RMN_SECRET="$(openssl rand -hex 32)" docker compose up -d --build
 
 # Set up a table for players (host only):
-docker exec root-multiplayer rmn-mp create-room --data /app/data --seats 4 --name "Friday game"
+docker exec root-multiplayer rmn-mp create-room --data /app/data --name "Friday game"
 
 # open http://localhost:8080
 ```
@@ -87,15 +88,15 @@ Rooms are created and managed with the same binary, run against the server's dat
 directory. In Docker:
 
 ```sh
-docker exec root-multiplayer rmn-mp create-room --data /app/data --seats 4 --name "Friday game"
+docker exec root-multiplayer rmn-mp create-room --data /app/data --name "Friday game"
 docker exec root-multiplayer rmn-mp rooms --data /app/data
 docker exec root-multiplayer rmn-mp kick --data /app/data --room <room-id> --seat 2
 ```
 
-`create-room` makes a table with 2–4 empty seats. `rooms` lists every table and
-which seats are free, taken, or faction-picked. `kick` removes a seat entirely;
-once the game has started it also drops that faction's pieces from the board,
-for when a player has gone quiet. Room ids and seat numbers are printed by
+`create-room` makes a four-seat table. `rooms` lists every table and which seats
+are free, taken, or faction-picked. `kick` empties a seat and, once the game has
+started, drops that faction's pieces from the board, for when a player has gone
+quiet; the table keeps its four seats. Room ids and seat numbers are printed by
 `create-room` and `rooms`.
 
 ### From source
@@ -108,11 +109,13 @@ Set `RMN_SECRET` to a long random string in production (it signs every token).
 
 ## How a game flows
 
-1. The host creates a table from the CLI (`create-room`), choosing 2–4 seats.
-2. Players open the site and see each table as a top-down board with a chair per
-   seat. Clicking a free chair takes that seat and stores its token.
-3. Each seated player picks an available faction. When every seat has a faction,
-   the game starts.
+1. The host creates a table from the CLI (`create-room`). Every table has four
+   seats.
+2. Players open the site and see each table as a top-down board with four chairs.
+   Clicking a free chair takes that seat and stores its token; 2–4 players can sit
+   down.
+3. Each seated player picks an available faction. Once every seated player has a
+   faction, the game starts with however many took a seat; the unused chairs close.
 4. On your turn the client shows your legal actions; submit one and the server
    applies it, saves the room, and returns your redacted view. Everyone else
    sees the change on their next fetch.

@@ -598,6 +598,10 @@ button:focus-visible, a:focus-visible, .clearing:focus-visible {
 .pseat.free:hover .seat-back, .pseat.free:focus-visible .seat-back { fill: #7a5410; }
 .pseat.free:hover .pseat-label, .pseat.free:focus-visible .pseat-label { fill: var(--ink); }
 .pseat.busy { opacity: 0.45; }
+.pseat.empty { opacity: 0.4; }
+.pseat.empty .seat-body { fill: #7b6a55; }
+.pseat.empty .seat-back { fill: #63543f; }
+.pseat.empty .pseat-label { fill: var(--paper-2); }
 .pseat.MC .seat-cushion { fill: var(--mc); }
 .pseat.ED .seat-cushion { fill: var(--ed); }
 .pseat.WA .seat-cushion { fill: var(--wa); }

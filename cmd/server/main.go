@@ -42,11 +42,13 @@ func usage() {
 
 Usage:
   rmn-mp serve --addr :8080 --data ./data --web ./web
-  rmn-mp create-room --data ./data --seats 4 [--name "Friday game"]
+  rmn-mp create-room --data ./data [--name "Friday game"]
   rmn-mp rooms --data ./data
   rmn-mp kick --data ./data --room <room-id> --seat <n>
 
-Rooms are created only by the administrator; players take seats in the browser.
+Rooms are created only by the administrator and always have four seats. Players
+take seats in the browser; the game starts with 2-4 seated players once they have
+all picked a faction.
 `)
 }
 
@@ -78,11 +80,10 @@ func serve(args []string) {
 func createRoom(args []string) {
 	fs := flag.NewFlagSet("create-room", flag.ExitOnError)
 	dataDir := fs.String("data", "data", "room data directory")
-	seats := fs.Int("seats", 4, "number of seats (2-4)")
 	name := fs.String("name", "", "optional room name")
 	_ = fs.Parse(args)
 
-	rm, err := newStore(*dataDir).Create(*name, *seats)
+	rm, err := newStore(*dataDir).Create(*name)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -90,7 +91,7 @@ func createRoom(args []string) {
 	if rm.Name != "" {
 		label = fmt.Sprintf("%s (%s)", rm.ID, rm.Name)
 	}
-	fmt.Printf("created room %s with %d seats\n", label, len(rm.Seats))
+	fmt.Printf("created room %s (four seats)\n", label)
 }
 
 func listRooms(args []string) {
