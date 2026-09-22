@@ -2,5 +2,7 @@ github.com/Thanhphan1147/root-bot v0.2.0 h1:OE7YE3dgqhk1YcsFH99m/SdfnTCFgAA00w9I
 github.com/Thanhphan1147/root-bot v0.2.0/go.mod h1:m3GWwb98qECXYP/hm5dRgGslAb54YyXR8ObG66hhXBQ=
 github.com/Thanhphan1147/root-mn v0.1.4 h1:oKlvVjxE9Z+I3lrGFSmp4QKp7hP3WwWzRsdX1Ec5ndQ=
 github.com/Thanhphan1147/root-mn v0.1.4/go.mod h1:fyTS7IhSbJTlESba+lc8ZSZPzLXvpHS4GBKV0uk+1gI=
+github.com/Thanhphan1147/root-mn v0.1.5 h1:nwAPLcHur/kdEoaehLnSVVDWHg/RFRT2BY0KC+yv8gg=
+github.com/Thanhphan1147/root-mn v0.1.5/go.mod h1:fyTS7IhSbJTlESba+lc8ZSZPzLXvpHS4GBKV0uk+1gI=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
