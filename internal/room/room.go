@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Thanhphan1147/root-bot/pkg/bot"
 	"github.com/Thanhphan1147/root-mn/pkg/root"
 )
 
@@ -25,6 +26,7 @@ type Seat struct {
 	Faction  string `json:"faction,omitempty"`
 	Occupied bool   `json:"occupied,omitempty"`
 	Version  int    `json:"version,omitempty"` // bumped to revoke this seat's token
+	Bot      string `json:"bot,omitempty"`     // bot spec; empty means a human seat
 }
 
 // Room is the persistent room metadata. Rooms are created by the administrator,
@@ -266,33 +268,176 @@ func (s *Store) PickFaction(id, seatID, faction string) (*Room, *root.Game, erro
 		}
 	}
 	room.Seats[i].Faction = string(f)
+	g = maybeStart(room, g)
+	_ = s.runBotsLocked(room, g)
+	if err := s.Save(room, g); err != nil {
+		return room, g, err
+	}
+	return room, g, nil
+}
 
-	if allPicked(room) {
-		factions := make([]root.Faction, 0, len(room.Seats))
-		for _, st := range room.Seats {
-			if st.Faction == "" {
-				continue
-			}
-			factions = append(factions, root.Faction(st.Faction))
+// maybeStart begins the game once every taken seat has a faction. Bots are
+// seated with a faction already, so a game can start with one or more of them.
+func maybeStart(room *Room, g *root.Game) *root.Game {
+	if room.Started || !allPicked(room) {
+		return g
+	}
+	factions := make([]root.Faction, 0, len(room.Seats))
+	for _, st := range room.Seats {
+		if st.Faction == "" {
+			continue
 		}
-		first := factions[0]
-		for _, fa := range factions {
-			if fa == root.MC {
-				first = fa // the Marquise traditionally starts
+		factions = append(factions, root.Faction(st.Faction))
+	}
+	first := factions[0]
+	for _, fa := range factions {
+		if fa == root.MC {
+			first = fa // the Marquise traditionally starts
+			break
+		}
+	}
+	var seedb [8]byte
+	_, _ = rand.Read(seedb[:])
+	g = root.NewGame(factions, first, binary.LittleEndian.Uint64(seedb[:]))
+	root.BeginSetup(g)
+	room.Started = true
+	room.First = string(first)
+	return g
+}
+
+// AddBot seats a bot with an optional faction (an empty faction takes the first
+// free base faction). Administrator only.
+func (s *Store) AddBot(id, seatID, faction, spec string) (*Room, *root.Game, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	room, g, err := s.Load(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	i := room.seatIndex(seatID)
+	if i < 0 {
+		return room, g, errors.New("no such seat")
+	}
+	if room.Seats[i].Occupied {
+		return room, g, errors.New("that seat is already taken")
+	}
+	if room.Started {
+		return room, g, errors.New("the game has already started")
+	}
+	if _, err := botFor(spec); err != nil {
+		return room, g, err
+	}
+	f := strings.ToUpper(strings.TrimSpace(faction))
+	if f == "" {
+		taken := map[string]bool{}
+		for _, st := range room.Seats {
+			if st.Faction != "" {
+				taken[st.Faction] = true
+			}
+		}
+		for _, cand := range []string{"MC", "ED", "WA", "VB"} {
+			if !taken[cand] {
+				f = cand
 				break
 			}
 		}
-		var seedb [8]byte
-		_, _ = rand.Read(seedb[:])
-		g = root.NewGame(factions, first, binary.LittleEndian.Uint64(seedb[:]))
-		root.BeginSetup(g)
-		room.Started = true
-		room.First = string(first)
+	}
+	ff := root.Faction(f)
+	if !ff.IsBase() {
+		return room, g, errors.New("unknown faction")
+	}
+	for _, st := range room.Seats {
+		if st.Faction == string(ff) {
+			return room, g, errors.New("that faction is already taken")
+		}
+	}
+	room.Seats[i].Occupied = true
+	room.Seats[i].Bot = spec
+	room.Seats[i].Faction = string(ff)
+	g = maybeStart(room, g)
+	if err := s.runBotsLocked(room, g); err != nil {
+		return room, g, err
 	}
 	if err := s.Save(room, g); err != nil {
 		return room, g, err
 	}
 	return room, g, nil
+}
+
+// RunBots plays any bot turns until it is a human's turn or the game ends.
+func (s *Store) RunBots(id string) (*Room, *root.Game, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	room, g, err := s.Load(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.runBotsLocked(room, g); err != nil {
+		return room, g, err
+	}
+	if err := s.Save(room, g); err != nil {
+		return room, g, err
+	}
+	return room, g, nil
+}
+
+// runBotsLocked advances the game through consecutive bot turns. The caller must
+// hold the store lock.
+func (s *Store) runBotsLocked(room *Room, g *root.Game) error {
+	if g == nil {
+		return nil
+	}
+	for i := 0; i < 400; i++ {
+		if len(g.Winner) > 0 {
+			break
+		}
+		seat := room.seatByFaction(g.Actor())
+		if seat == nil || seat.Bot == "" {
+			break
+		}
+		if len(g.LegalActions()) == 0 {
+			break
+		}
+		b, err := botFor(seat.Bot)
+		if err != nil {
+			break
+		}
+		mv := b.Choose(g, g.Actor())
+		if mv.ID == "" {
+			break
+		}
+		if err := g.Apply(mv); err != nil {
+			break
+		}
+	}
+	return nil
+}
+
+// botFor builds a bot from a spec, panicking specs excepted.
+func botFor(spec string) (b bot.Bot, err error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		spec = defaultBot
+	}
+	defer func() {
+		if recover() != nil {
+			b, err = nil, fmt.Errorf("unknown bot %q", spec)
+		}
+	}()
+	return bot.Make(spec, time.Now().UnixNano(), 400, 0), nil
+}
+
+// defaultBot is used when a seat is marked as a bot without a spec.
+const defaultBot = "greedy:full"
+
+// seatByFaction returns the seat held by a faction, or nil.
+func (r *Room) seatByFaction(f root.Faction) *Seat {
+	for i := range r.Seats {
+		if r.Seats[i].Faction == string(f) {
+			return &r.Seats[i]
+		}
+	}
+	return nil
 }
 
 // ApplyAction validates that it is the seat's turn and applies an action.
@@ -322,6 +467,7 @@ func (s *Store) ApplyAction(id, seatID, actionID string) (*Room, *root.Game, err
 	if err := g.Apply(root.Action{ID: actionID}); err != nil {
 		return room, g, err
 	}
+	_ = s.runBotsLocked(room, g)
 	if err := s.Save(room, g); err != nil {
 		return room, g, err
 	}

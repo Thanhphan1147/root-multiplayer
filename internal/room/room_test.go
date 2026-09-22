@@ -272,6 +272,32 @@ func TestListRooms(t *testing.T) {
 	}
 }
 
+func TestBotPlaysItsTurn(t *testing.T) {
+	s := newStore(t)
+	rm, _ := s.Create("")
+	if _, _, err := s.AddBot(rm.ID, rm.Seats[0].ID, "MC", "greedy:full"); err != nil {
+		t.Fatalf("add bot: %v", err)
+	}
+	if _, _, _, _, err := s.Take(rm.ID, rm.Seats[1].ID); err != nil {
+		t.Fatalf("take: %v", err)
+	}
+	started, g, err := s.PickFaction(rm.ID, rm.Seats[1].ID, "ED")
+	if err != nil {
+		t.Fatalf("pick: %v", err)
+	}
+	if !started.Started {
+		t.Fatal("the game should start with a bot and a human seated")
+	}
+	if len(started.Seats) != 4 {
+		t.Fatalf("seats = %d, want 4", len(started.Seats))
+	}
+	// MC is first and is a bot, so it should have played its setup and stopped
+	// at the human's ED step.
+	if g.SetupMode && g.Actor() != root.ED {
+		t.Fatalf("expected ED to act after the bot's setup, got %s (stage %s)", g.Actor(), g.SetupStage)
+	}
+}
+
 func TestPendingPlayerActsDuringBattle(t *testing.T) {
 	s, rm, g, seatOf := startedBattle(t)
 	var hit *root.Action

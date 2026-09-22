@@ -756,7 +756,7 @@ function chair(room, seat, cx, cy) {
   // faction afterwards. The unused chairs at a 4-seat table stay closed.
   const takeable = !seat.occupied && (!room.started || !!seat.faction);
   const state = seat.occupied ? "occupied" : (takeable ? "free" : "empty");
-  g.setAttribute("class", "pseat " + state + " " + (seat.faction || ""));
+  g.setAttribute("class", "pseat " + state + " " + (seat.faction || "") + (seat.bot ? " bot" : ""));
   g.setAttribute("transform", `translate(${cx} ${cy})`);
   g.append(pixelRect(-7, -7, 14, 14, "seat-shadow"));
   g.append(pixelRect(-6, -6, 12, 12, "seat-body"));
@@ -767,12 +767,13 @@ function chair(room, seat, cx, cy) {
   label.setAttribute("x", 0);
   label.setAttribute("y", 3);
   label.setAttribute("class", "pseat-label");
-  label.textContent = seat.faction || String(seat.index + 1);
+  label.textContent = seat.faction || (seat.bot ? "AI" : String(seat.index + 1));
   g.append(label);
 
   if (!takeable) {
+    const who = seat.faction ? " by " + seat.faction : "";
     g.setAttribute("aria-label", seat.occupied
-      ? "Seat " + (seat.index + 1) + " taken" + (seat.faction ? " by " + seat.faction : "")
+      ? "Seat " + (seat.index + 1) + (seat.bot ? " (bot)" : "") + " taken" + who
       : "Seat " + (seat.index + 1) + " closed");
     return g;
   }

@@ -26,6 +26,8 @@ func main() {
 		createRoom(os.Args[2:])
 	case "rooms":
 		listRooms(os.Args[2:])
+	case "add-bot":
+		addBot(os.Args[2:])
 	case "kick":
 		kick(os.Args[2:])
 	case "help", "-h", "--help":
@@ -43,12 +45,13 @@ func usage() {
 Usage:
   rmn-mp serve --addr :8080 --data ./data --web ./web
   rmn-mp create-room --data ./data [--name "Friday game"]
+  rmn-mp add-bot --data ./data --room <id> --seat <n> [--faction MC] [--bot greedy:full]
   rmn-mp rooms --data ./data
   rmn-mp kick --data ./data --room <room-id> --seat <n>
 
 Rooms are created only by the administrator and always have four seats. Players
 take seats in the browser; the game starts with 2-4 seated players once they have
-all picked a faction.
+all picked a faction. Seats filled with add-bot are played by the server.
 `)
 }
 
@@ -161,4 +164,37 @@ func kick(args []string) {
 		msg += fmt.Sprintf(" (dropped %s from the game)", faction)
 	}
 	fmt.Printf("%s; %d seats remain\n", msg, len(updated.Seats))
+}
+
+func addBot(args []string) {
+	fs := flag.NewFlagSet("add-bot", flag.ExitOnError)
+	dataDir := fs.String("data", "data", "room data directory")
+	roomID := fs.String("room", "", "room id")
+	seat := fs.Int("seat", 0, "seat number (1-based, as shown by `rooms`)")
+	faction := fs.String("faction", "", "faction (MC|ED|WA|VB); default: first free")
+	spec := fs.String("bot", "greedy:full", "bot spec: random | passive | greedy:<profile> | mcts:<profile>")
+	_ = fs.Parse(args)
+	if *roomID == "" || *seat < 1 {
+		log.Fatal("usage: rmn-mp add-bot --data DIR --room ID --seat N [--faction MC] [--bot greedy:full]")
+	}
+
+	store := newStore(*dataDir)
+	rm, _, err := store.Load(*roomID)
+	if err != nil {
+		log.Fatalf("room %s: %v", *roomID, err)
+	}
+	if *seat > len(rm.Seats) {
+		log.Fatalf("room %s has only %d seats", *roomID, len(rm.Seats))
+	}
+	seatID := rm.Seats[*seat-1].ID
+	updated, g, err := store.AddBot(*roomID, seatID, *faction, *spec)
+	if err != nil {
+		log.Fatal(err)
+	}
+	msg := fmt.Sprintf("seated bot %q as %s in seat %d of room %s",
+		*spec, updated.Seats[*seat-1].Faction, *seat, *roomID)
+	if updated.Started && g != nil {
+		msg += " (game started)"
+	}
+	fmt.Println(msg)
 }

@@ -99,6 +99,17 @@ started, drops that faction's pieces from the board, for when a player has gone
 quiet; the table keeps its four seats. Room ids and seat numbers are printed by
 `create-room` and `rooms`.
 
+To give a lone player an opponent, fill a seat with the server-side bot:
+
+```sh
+docker exec root-multiplayer rmn-mp add-bot --data /app/data --room <id> --seat 2 --faction ED --bot greedy:full
+```
+
+`--faction` is optional (defaults to the first free faction). `--bot` accepts
+`random`, `passive`, `greedy:<profile>`, or `mcts:<profile>`. The bot picks a
+faction, plays its own turns on the server, and is marked in gold in the lobby.
+Bot moves are computed by [root-bot](https://github.com/Thanhphan1147/root-bot).
+
 ### From source
 
 ```sh

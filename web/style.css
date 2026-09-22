@@ -606,6 +606,8 @@ button:focus-visible, a:focus-visible, .clearing:focus-visible {
 .pseat.ED .seat-cushion { fill: var(--ed); }
 .pseat.WA .seat-cushion { fill: var(--wa); }
 .pseat.VB .seat-cushion { fill: var(--vb); }
+.pseat.bot .seat-back { fill: var(--gold); }
+.pseat.bot .pseat-label { font-weight: 700; }
 
 .card-wide { width: min(900px, 96vw); }
 .landingfoot { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.9rem; }
