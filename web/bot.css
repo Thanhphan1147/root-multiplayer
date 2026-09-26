@@ -247,3 +247,6 @@
 .rmninput { display: flex; gap: 0.4rem; padding: 0.4rem 0.55rem 0; }
 .rmninput input { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.66rem; padding: 0.35rem 0.45rem; border: 1.5px solid var(--line-strong); border-radius: var(--radius); background: var(--paper); color: var(--ink); }
 .rmnerr { min-height: 1rem; padding: 0.25rem 0.55rem 0.4rem; font-family: var(--mono); font-size: 0.64rem; color: var(--crimson); }
+/* Preview of the full RMN line the "intent + operands" input expands to. */
+.rmnpreview { padding: 0.3rem 0.55rem 0; font-family: var(--mono); font-size: 0.6rem; color: var(--ink-soft); white-space: nowrap; overflow-x: auto; }
+.rmnpreview:empty { display: none; }

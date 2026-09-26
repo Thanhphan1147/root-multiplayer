@@ -191,17 +191,18 @@ func TestCustomRMNOverHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	line := c.RMNLog[len(c.RMNLog)-1]
+	short := strings.Join(strings.Fields(line)[3:], " ")
 
 	// A malformed line is rejected.
 	if resp, _ := do(t, ts, "POST", "/api/rmn", tok0, map[string]any{"line": "garbage"}, nil); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("malformed line should be 403, got %d", resp.StatusCode)
 	}
 	// The wrong seat cannot act on MC's setup.
-	if resp, _ := do(t, ts, "POST", "/api/rmn", tok1, map[string]any{"line": line}, nil); resp.StatusCode != http.StatusForbidden {
+	if resp, _ := do(t, ts, "POST", "/api/rmn", tok1, map[string]any{"line": short}, nil); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("wrong seat should be 403, got %d", resp.StatusCode)
 	}
-	// The right seat can apply the line.
-	resp, out := do(t, ts, "POST", "/api/rmn", tok0, map[string]any{"line": line}, nil)
+	// The right seat can apply the shorthand line.
+	resp, out := do(t, ts, "POST", "/api/rmn", tok0, map[string]any{"line": short}, nil)
 	if resp.StatusCode != 200 {
 		t.Fatalf("custom RMN should be 200, got %d (%v)", resp.StatusCode, out)
 	}

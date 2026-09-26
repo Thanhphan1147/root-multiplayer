@@ -1,6 +1,7 @@
 package room
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Thanhphan1147/root-mn/pkg/root"
@@ -201,24 +202,31 @@ func TestApplyCustomRMN(t *testing.T) {
 	if len(legal) == 0 {
 		t.Fatal("expected a legal setup action")
 	}
-	// Apply the first legal action to a clone to learn the line it emits.
+	// Apply the first legal action to a clone to learn the line it emits, then
+	// send only the "intent + operands" shorthand (the active player and
+	// sequence are inferred).
 	c := g.Clone()
 	if err := c.Apply(legal[0]); err != nil {
 		t.Fatal(err)
 	}
 	line := c.RMNLog[len(c.RMNLog)-1]
+	short := strings.Join(strings.Fields(line)[3:], " ")
 
 	// The wrong seat cannot apply the line.
-	if _, _, err := s.ApplyRMN(rm.ID, ids[1], line); err == nil {
+	if _, _, err := s.ApplyRMN(rm.ID, ids[1], short); err == nil {
 		t.Fatal("seat 1 should not act on MC's setup")
 	}
 	// A malformed line is rejected with the engine's message.
 	if _, _, err := s.ApplyRMN(rm.ID, ids[0], "not rmn at all"); err == nil {
 		t.Fatal("a malformed line should be rejected")
 	}
-	// The right seat can apply the exact line.
-	if _, _, err := s.ApplyRMN(rm.ID, ids[0], line); err != nil {
+	// The right seat can apply the shorthand.
+	_, g2, err := s.ApplyRMN(rm.ID, ids[0], short)
+	if err != nil {
 		t.Fatalf("custom RMN apply failed: %v", err)
+	}
+	if got := g2.RMNLog[len(g2.RMNLog)-1]; got != line {
+		t.Fatalf("shorthand recorded %q, want %q", got, line)
 	}
 }
 

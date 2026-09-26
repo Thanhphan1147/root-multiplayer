@@ -287,34 +287,53 @@ document.getElementById("howtoclose").onclick = howtoClose;
 document.getElementById("howtobackdrop").onclick = howtoClose;
 
 // --- Custom RMN input ---
+// The player types just "intent + operands" (e.g. "V:explore at=C12"); the
+// active player is assumed and the sequence/round.phase are inferred from the
+// log. The server rebuilds authoritatively; we show a preview of the full line.
+const rmnIn = document.getElementById("rmnin");
+const rmnPrev = document.getElementById("rmnpreview");
+const rmnErr = document.getElementById("rmnerr");
+
+function rmnFullLine(text) {
+  if (!text || !game || !game.room || !game.room.started) return "";
+  const actor = activeFaction(game);
+  const seq = ((game.rmn && game.rmn.length) || 0) + 1;
+  return `${seq} ${game.round}.${game.phase} ${actor} ${text}`;
+}
+
+function updateRMNPreview() {
+  const text = rmnIn.value.trim();
+  rmnPrev.textContent = text ? "→ " + rmnFullLine(text) : "";
+}
+
 async function applyCustomRMN() {
-  const inp = document.getElementById("rmnin");
-  const errEl = document.getElementById("rmnerr");
-  const text = inp.value.trim();
+  const text = rmnIn.value.trim();
   if (!text || rmnBusy) return;
-  if (!game || !game.room || !game.room.started) { errEl.textContent = "the game has not started"; return; }
+  if (!game || !game.room || !game.room.started) { rmnErr.textContent = "the game has not started"; return; }
   rmnBusy = true;
-  errEl.textContent = "";
+  rmnErr.textContent = "";
   try {
     const r = await api("/api/rmn", { method: "POST", body: JSON.stringify({ line: text }) });
     if (r.data && !r.data.error) {
-      inp.value = "";
+      rmnIn.value = "";
+      rmnPrev.textContent = "";
       const post = r.data;
       etag = r.etag;
       viewer = post.you || viewer;
       game = post;
       render();
     } else {
-      errEl.textContent = (r.data && r.data.error) || "could not apply RMN";
+      rmnErr.textContent = (r.data && r.data.error) || "could not apply RMN";
     }
   } catch (e) {
-    errEl.textContent = "network error";
+    rmnErr.textContent = "network error";
   } finally {
     rmnBusy = false;
   }
 }
 document.getElementById("rmngo").onclick = applyCustomRMN;
-document.getElementById("rmnin").addEventListener("keydown", e => {
+rmnIn.addEventListener("input", updateRMNPreview);
+rmnIn.addEventListener("keydown", e => {
   if (e.key === "Enter") { e.preventDefault(); applyCustomRMN(); }
 });
 
