@@ -474,6 +474,40 @@ func (s *Store) ApplyAction(id, seatID, actionID string) (*Room, *root.Game, err
 	return room, g, nil
 }
 
+// ApplyRMN validates that it is the seat's turn and applies a custom RMN line
+// entered by the player, returning the engine's short error message when the
+// line is malformed or not legal.
+func (s *Store) ApplyRMN(id, seatID, line string) (*Room, *root.Game, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	room, g, err := s.Load(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !room.Started || g == nil {
+		return room, nil, errors.New("the game has not started")
+	}
+	i := room.seatIndex(seatID)
+	if i < 0 {
+		return room, g, errors.New("no such seat")
+	}
+	actor := g.Current
+	if g.Pending != nil {
+		actor = g.Pending.Player
+	}
+	if room.Seats[i].Faction != string(actor) {
+		return room, g, fmt.Errorf("it is not your turn")
+	}
+	if err := g.TryRMN(line); err != nil {
+		return room, g, err
+	}
+	_ = s.runBotsLocked(room, g)
+	if err := s.Save(room, g); err != nil {
+		return room, g, err
+	}
+	return room, g, nil
+}
+
 // Save writes room metadata, the authoritative state, and the .rmn log.
 func (s *Store) Save(room *Room, g *root.Game) error {
 	if err := os.MkdirAll(s.roomDir(room.ID), 0o755); err != nil {

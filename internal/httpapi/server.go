@@ -38,6 +38,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/state", s.state)
 	mux.HandleFunc("/api/faction", s.faction)
 	mux.HandleFunc("/api/action", s.action)
+	mux.HandleFunc("/api/rmn", s.rmn)
 	mux.HandleFunc("/api/export", s.export)
 	mux.HandleFunc("/api/ws", s.ws)
 	if s.WebDir != "" {
@@ -206,6 +207,34 @@ func (s *Server) action(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	updated, g, err := s.Store.ApplyAction(rm.ID, seat.ID, req.ID)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	s.broadcast(rm.ID, g)
+	s.respondState(w, s.payload(updated, g, seat.Index))
+}
+
+// rmn applies a player-entered RMN line, surfacing the engine's short reason
+// when the line is malformed or not legal.
+func (s *Server) rmn(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	rm, seat, _, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "missing or invalid token")
+		return
+	}
+	var req struct {
+		Line string `json:"line"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	updated, g, err := s.Store.ApplyRMN(rm.ID, seat.ID, req.Line)
 	if err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return

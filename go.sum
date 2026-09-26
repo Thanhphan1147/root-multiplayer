@@ -10,5 +10,7 @@ github.com/Thanhphan1147/root-mn v0.1.7 h1:mE6axuomFN/cKoSZPJLOzmGlVJyRjx2hTPAIL
 github.com/Thanhphan1147/root-mn v0.1.7/go.mod h1:fyTS7IhSbJTlESba+lc8ZSZPzLXvpHS4GBKV0uk+1gI=
 github.com/Thanhphan1147/root-mn v0.1.8 h1:GgkYsyan7WJctcH3TctptnJ7wrWKhpEoAeMk/ym6NMU=
 github.com/Thanhphan1147/root-mn v0.1.8/go.mod h1:fyTS7IhSbJTlESba+lc8ZSZPzLXvpHS4GBKV0uk+1gI=
+github.com/Thanhphan1147/root-mn v0.1.31 h1:0L11Nzv3jOmOfsKN6uFcj7BE3pM9sCwN3dhGjOxFj6o=
+github.com/Thanhphan1147/root-mn v0.1.31/go.mod h1:fyTS7IhSbJTlESba+lc8ZSZPzLXvpHS4GBKV0uk+1gI=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=

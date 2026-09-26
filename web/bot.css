@@ -1,0 +1,249 @@
+/* Bot demo overrides on top of the shared analysis styling. */
+
+.thinking {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  z-index: 200;
+  padding: 0.45rem 0.8rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  box-shadow: var(--shadow-lift);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+.thinking[hidden] { display: none; }
+
+/* Start dialog: side and engine pickers. */
+.sidepick, .strengthpick { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.3rem; }
+.sidepick button, .strengthpick button {
+  flex: 1 1 8rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.55rem 0.6rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+.sidepick button.MC { border-color: var(--mc); color: var(--mc); }
+.sidepick button.ED { border-color: var(--ed); color: var(--ed); }
+.strengthpick button { flex: 1 1 4rem; }
+.sidepick button.on, .strengthpick button.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+/* The bot plays the Marquise or the Eyrie; mark the engine's chair. */.pcard .phead .f .engine-tag {
+  margin-left: 0.35rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  color: var(--gold);
+  font-size: 0.56rem;
+}
+
+/* Footer: the unredacted export button. */
+.foot-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.sitefoot .btn { margin-top: 0; }
+
+/* Action banner shown while the engine's move is animated. Fixed so showing
+   and hiding it never shifts the board. */
+.actionbanner {
+  position: fixed;
+  left: 50%;
+  bottom: 3.4rem;
+  transform: translateX(-50%);
+  z-index: 210;
+  max-width: min(92vw, 560px);
+  margin: 0;
+  padding: 0.5rem 0.8rem;
+  border: 1.5px solid var(--line-strong);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  box-shadow: var(--shadow-lift);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  text-align: center;
+}
+.actionbanner[hidden] { display: none; }
+.actionbanner.MC { border-left-color: var(--mc); color: var(--mc); }
+.actionbanner.ED { border-left-color: var(--ed); color: var(--ed); }
+
+/* The moving-warrior dot that slides along a road. */
+.movdot {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, -50%);
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.22rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 2px solid var(--paper);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 1px 5px rgba(22, 36, 27, 0.5);
+  pointer-events: none;
+}
+.movdot.MC { background: var(--mc); }
+.movdot.ED { background: var(--ed); }
+
+/* Notification panel that blanks out the whole clearing during a battle or
+   build so only the action reads. Slides in and out via WAAPI (see
+   cardKeyframes). The -1.5px inset covers the clearing's own border. */
+.clearingtag {
+  position: absolute;
+  inset: -1.5px;
+  z-index: 12;
+  transform: translateY(0);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  box-shadow: var(--shadow-lift);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.clearingtag.MC { border-color: var(--mc); color: var(--mc); }
+.clearingtag.ED { border-color: var(--ed); color: var(--ed); }
+.clearingtag .gi { width: 0.85rem; height: 0.85rem; display: block; }
+.clearingtag .tagf { padding: 0 0.28rem; border-radius: 4px; color: #fff; }
+.clearingtag .tagf.MC { background: var(--mc); }
+.clearingtag .tagf.ED { background: var(--ed); }
+.clearingtag .tagg { color: var(--ink-soft); font-weight: 600; }
+
+/* Pulsing highlight so the affected clearing reads even without the card. */
+.clearing.flash {
+  z-index: 5;
+  border-color: var(--ink);
+  animation: clearflash 0.42s ease-in-out 2;
+}
+@keyframes clearflash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(150, 52, 44, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(150, 52, 44, 0.35); }
+}
+
+@media (max-width: 720px), (prefers-reduced-motion: reduce) {
+  .clearingtag { position: static; inset: auto; transform: none; width: 100%; margin-top: 0.3rem; }
+  .clearing.flash { animation: none; box-shadow: 0 0 0 3px rgba(150, 52, 44, 0.35); }
+}
+/* Export dialog: shown instead of a raw download so mobile can copy/share. */
+#exporttext {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0.5rem;
+  resize: vertical;
+}
+.exportrow { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.err { min-height: 1rem; margin-top: 0.4rem; font-family: var(--mono); font-size: 0.68rem; color: var(--crimson); }
+
+/* Vagabond character ability, shown in the player panel. */
+.vbability {
+  margin: 0.2rem 0 0.35rem;
+  padding: 0.28rem 0.4rem;
+  border-left: 3px solid var(--vb);
+  background: var(--paper);
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: var(--ink);
+}
+.vbability b { color: var(--vb); }
+
+/* Vagabond active quests (public info). */
+.qhead {
+  margin-top: 0.4rem;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.quest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+  padding: 0.22rem 0.3rem;
+  border-left: 3px solid var(--vb);
+  background: var(--paper);
+  font-size: 0.62rem;
+}
+.quest .qsuit {
+  width: 1rem;
+  height: 1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 0.55rem;
+  font-weight: 700;
+}
+.qsuit.F { background: var(--mc); }
+.qsuit.R { background: var(--vb); }
+.qsuit.M { background: #5b6472; }
+.quest .qname { font-weight: 700; color: var(--ink); }
+.quest .qreq { color: var(--ink-soft); }
+.quest .qrew { margin-left: auto; font-family: var(--mono); color: var(--ink-soft); }
+
+/* "How to play" sidebar: hidden by default on all viewports. */
+.howto {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 320;
+  width: min(420px, 92vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-2);
+  border-left: 2px solid var(--line-strong);
+  box-shadow: -4px 0 16px rgba(22, 36, 27, 0.18);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.18s ease, visibility 0.18s;
+}
+.howto.open { transform: translateX(0); visibility: visible; }
+.howto-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 2px solid var(--line-strong);
+}
+.howto-head h2 { margin: 0; font-size: 0.8rem; letter-spacing: 0.05em; text-transform: uppercase; }
+.howto-body { overflow: auto; padding: 0.7rem 0.9rem 1.2rem; }
+.howto-goal { margin: 0 0 0.6rem; font-size: 0.68rem; color: var(--ink); }
+.howto-sec { margin: 0 0 0.7rem; }
+.howto-sec h3 { margin: 0 0 0.2rem; font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); }
+.howto-sec p { margin: 0; font-size: 0.68rem; line-height: 1.45; color: var(--ink); }
+
+/* Custom RMN input in the Actions panel. */
+.rmninput { display: flex; gap: 0.4rem; padding: 0.4rem 0.55rem 0; }
+.rmninput input { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.66rem; padding: 0.35rem 0.45rem; border: 1.5px solid var(--line-strong); border-radius: var(--radius); background: var(--paper); color: var(--ink); }
+.rmnerr { min-height: 1rem; padding: 0.25rem 0.55rem 0.4rem; font-family: var(--mono); font-size: 0.64rem; color: var(--crimson); }

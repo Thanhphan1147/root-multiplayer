@@ -186,6 +186,42 @@ func TestTurnEnforcement(t *testing.T) {
 	}
 }
 
+func TestApplyCustomRMN(t *testing.T) {
+	s := newStore(t)
+	rm, _ := s.Create("")
+	ids, _ := takeN(t, s, rm.ID, 2)
+	if _, _, err := s.PickFaction(rm.ID, ids[0], "MC"); err != nil {
+		t.Fatal(err)
+	}
+	_, g, err := s.PickFaction(rm.ID, ids[1], "ED")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legal := g.LegalActions()
+	if len(legal) == 0 {
+		t.Fatal("expected a legal setup action")
+	}
+	// Apply the first legal action to a clone to learn the line it emits.
+	c := g.Clone()
+	if err := c.Apply(legal[0]); err != nil {
+		t.Fatal(err)
+	}
+	line := c.RMNLog[len(c.RMNLog)-1]
+
+	// The wrong seat cannot apply the line.
+	if _, _, err := s.ApplyRMN(rm.ID, ids[1], line); err == nil {
+		t.Fatal("seat 1 should not act on MC's setup")
+	}
+	// A malformed line is rejected with the engine's message.
+	if _, _, err := s.ApplyRMN(rm.ID, ids[0], "not rmn at all"); err == nil {
+		t.Fatal("a malformed line should be rejected")
+	}
+	// The right seat can apply the exact line.
+	if _, _, err := s.ApplyRMN(rm.ID, ids[0], line); err != nil {
+		t.Fatalf("custom RMN apply failed: %v", err)
+	}
+}
+
 func TestRedaction(t *testing.T) {
 	s := newStore(t)
 	rm, _ := s.Create("")

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<meta name="description" content="Watch a ROOT game replay from an RMN log, turn by turn." />
+<title>ROOT · replay viewer</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="bot.css" />
+<link rel="stylesheet" href="replay.css" />
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand">
+      <h1>ROOT · replay viewer</h1>
+      <p class="sub">Paste an RMN log · scrub the timeline or press play</p>
+    </div>
+    <div class="header-controls">
+      <button id="togglehowto" class="btn ghost" type="button" aria-controls="howto" aria-expanded="false">How to play</button>
+      <button id="openpaste" class="btn ghost" type="button">Load .rmn</button>
+      <a class="btn" href="index.html">Back to tables</a>
+    </div>
+  </div>
+</header>
+
+<div class="turnbanner" id="turnbanner" hidden aria-live="polite"></div>
+<div class="replaywarn" id="replaywarn" hidden></div>
+<div class="drawer-backdrop" id="howtobackdrop" hidden></div>
+
+<aside class="howto" id="howto" aria-label="How to play">
+  <div class="howto-head">
+    <h2 id="howtotitle">How to play</h2>
+    <button id="howtoclose" class="btn ghost" type="button">Close</button>
+  </div>
+  <div class="howto-body" id="howtobody"></div>
+</aside>
+
+<main class="bench">
+  <aside class="players" id="players" aria-label="Players"></aside>
+
+  <section class="boardwrap">
+    <div class="actionbanner" id="actionbanner" hidden aria-live="polite"></div>
+    <div class="minimap" id="minimap" aria-label="Clearing graph" role="img"></div>
+    <div class="board" id="board" aria-label="Woodland map"></div>
+    <div class="boardfoot" id="boardfoot"></div>
+  </section>
+
+  <section class="rightcol">
+    <div class="panel">
+      <div class="panel-head"><h2>Log</h2><span class="hint">human-readable events</span></div>
+      <ol class="log" id="log"></ol>
+    </div>
+  </section>
+</main>
+
+<div class="replayfoot">
+  <div class="replaybar" id="replaybar">
+    <button id="play" class="btn" type="button" aria-label="Play or pause">▶</button>
+    <button id="prev" class="btn ghost" type="button" aria-label="Previous event">‹</button>
+    <button id="next" class="btn ghost" type="button" aria-label="Next event">›</button>
+    <div class="track">
+      <input type="range" id="timeline" min="0" max="0" value="0" step="1" aria-label="Timeline" />
+      <div class="ticks" id="ticks" aria-hidden="true"></div>
+    </div>
+    <label class="speedwrap">speed
+      <select id="speed">
+        <option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option>
+        <option value="2">2×</option>
+        <option value="4">4×</option>
+      </select>
+    </label>
+  </div>
+  <div class="replaylabel"><span id="rlabel">no replay loaded</span></div>
+</div>
+
+<footer class="sitefoot">
+  <span>Unofficial fan project — not affiliated with Leder Games.</span>
+  <span class="foot-actions"><a href="https://github.com/Thanhphan1147/root-multiplayer" target="_blank" rel="noopener">root-multiplayer</a></span>
+</footer>
+
+<div class="overlay" id="paste" hidden>
+  <div class="card">
+    <h2>Watch a replay</h2>
+    <p>Paste an exported RMN log, or choose a file. The board is rebuilt from the log, then you can scrub or play it.</p>
+    <textarea id="rmntext" rows="10" spellcheck="false" placeholder="%RMN 3.0&#10;%Game demo-..."></textarea>
+    <input type="file" id="rmnfile" accept=".rmn,.txt,text/plain" />
+    <button id="loadrmn" class="btn" type="button" disabled>View replay</button>
+    <div class="err" id="pasteerr"></div>
+  </div>
+</div>
+
+<script src="wasm_exec.js"></script>
+<script src="board.js"></script>
+<script src="howto.js"></script>
+<script src="replay.js"></script>
+</body>
+</html>

@@ -165,6 +165,48 @@ func TestListAndTakeHTTP(t *testing.T) {
 	}
 }
 
+func TestCustomRMNOverHTTP(t *testing.T) {
+	ts, store := newTestServer(t)
+	defer ts.Close()
+
+	rm, _ := store.Create("")
+	_, take0 := do(t, ts, "POST", "/api/take", "", map[string]any{"room": rm.ID, "seat": rm.Seats[0].ID}, nil)
+	_, take1 := do(t, ts, "POST", "/api/take", "", map[string]any{"room": rm.ID, "seat": rm.Seats[1].ID}, nil)
+	tok0, _ := take0["token"].(string)
+	tok1, _ := take1["token"].(string)
+	do(t, ts, "POST", "/api/faction", tok0, map[string]any{"faction": "MC"}, nil)
+	do(t, ts, "POST", "/api/faction", tok1, map[string]any{"faction": "ED"}, nil)
+
+	// Derive the first legal setup line by applying it to a clone.
+	_, g, err := store.Load(rm.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legal := g.LegalActions()
+	if len(legal) == 0 {
+		t.Fatal("expected a legal setup action")
+	}
+	c := g.Clone()
+	if err := c.Apply(legal[0]); err != nil {
+		t.Fatal(err)
+	}
+	line := c.RMNLog[len(c.RMNLog)-1]
+
+	// A malformed line is rejected.
+	if resp, _ := do(t, ts, "POST", "/api/rmn", tok0, map[string]any{"line": "garbage"}, nil); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("malformed line should be 403, got %d", resp.StatusCode)
+	}
+	// The wrong seat cannot act on MC's setup.
+	if resp, _ := do(t, ts, "POST", "/api/rmn", tok1, map[string]any{"line": line}, nil); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("wrong seat should be 403, got %d", resp.StatusCode)
+	}
+	// The right seat can apply the line.
+	resp, out := do(t, ts, "POST", "/api/rmn", tok0, map[string]any{"line": line}, nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("custom RMN should be 200, got %d (%v)", resp.StatusCode, out)
+	}
+}
+
 func TestLeaveInvalidatesToken(t *testing.T) {
 	ts, store := newTestServer(t)
 	defer ts.Close()

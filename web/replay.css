@@ -1,0 +1,97 @@
+/* Replay viewer: fixed transport bar plus a paste overlay. Reuses the demo's
+   board, player cards, log, banner and animations from board.js/style.css. */
+
+main.bench { padding-bottom: 7.5rem; }
+
+/* Fixed footer: a static transport bar with a fixed-height caption row below
+   it, so a long action label can never reflow or resize the bar. */
+.replayfoot {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 200;
+  background: var(--paper-2);
+  box-shadow: 0 -3px 10px rgba(22, 36, 27, 0.12);
+}
+
+.replaybar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.6rem clamp(0.8rem, 2vw, 1.6rem);
+  border-top: 2px solid var(--line-strong);
+}
+.replaybar .btn { min-width: 2.3rem; }
+.replaybar .btn.on { background: var(--ink); color: var(--paper); }
+
+.replaybar .track { position: relative; flex: 1 1 340px; min-width: 180px; padding-bottom: 0.55rem; }
+.replaybar input[type="range"] { width: 100%; margin: 0; accent-color: var(--ink); }
+.replaybar .ticks { position: absolute; left: 0; right: 0; bottom: 0; height: 0.5rem; pointer-events: none; }
+.replaybar .tick { position: absolute; top: 0; width: 1px; height: 0.42rem; background: var(--line-strong); transform: translateX(-50%); }
+
+.replaylabel {
+  box-sizing: border-box;
+  height: 1.7rem;
+  padding: 0.3rem clamp(0.8rem, 2vw, 1.6rem);
+  border-top: 1.5px solid var(--line);
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  color: var(--ink-soft);
+  line-height: 1.1;
+}
+.replaylabel #rlabel {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.replaybar .speedwrap {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--ink-soft);
+}
+.replaybar select {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  padding: 0.2rem 0.3rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.replaywarn {
+  margin: 0.6rem auto 0;
+  max-width: min(92vw, 900px);
+  padding: 0.5rem 0.8rem;
+  border: 1.5px solid var(--crimson);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  box-shadow: var(--shadow);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--crimson);
+}
+
+#rmntext {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.4;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0.5rem;
+  resize: vertical;
+}
+#rmnfile { margin: 0.6rem 0; font-family: var(--mono); font-size: 0.68rem; color: var(--ink-soft); }
+.err { min-height: 1rem; margin-top: 0.4rem; font-family: var(--mono); font-size: 0.68rem; color: var(--crimson); }

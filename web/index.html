@@ -7,7 +7,8 @@
 <meta name="description" content="Root Machine Notation — correspondence multiplayer for the board game ROOT." />
 <title>Root Machine Notation · correspondence</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="style.css?v=5" />
+<link rel="stylesheet" href="style.css?v=6" />
+<link rel="stylesheet" href="bot.css?v=1" />
 </head>
 <body>
 <header class="masthead">
@@ -19,6 +20,7 @@
     <div class="turnbar" id="turnbar" aria-live="polite"></div>
     <div class="header-controls">
       <button id="toggleplayers" class="btn ghost" type="button" aria-controls="players" aria-expanded="false">Players</button>
+      <button id="togglehowto" class="btn ghost" type="button" aria-controls="howto" aria-expanded="false">How to play</button>
       <label title="Instant updates via WebSocket (falls back to polling)">
         <span class="dot" id="livedot"></span>
         <input type="checkbox" id="live" /> live
@@ -38,11 +40,21 @@
 <div class="turnbanner" id="turnbanner" hidden aria-live="polite"></div>
 
 <div class="drawer-backdrop" id="drawerbackdrop" hidden></div>
+<div class="drawer-backdrop" id="howtobackdrop" hidden></div>
+
+<aside class="howto" id="howto" aria-label="How to play">
+  <div class="howto-head">
+    <h2 id="howtotitle">How to play</h2>
+    <button id="howtoclose" class="btn ghost" type="button">Close</button>
+  </div>
+  <div class="howto-body" id="howtobody"></div>
+</aside>
 
 <main class="bench">
   <aside class="players" id="players" aria-label="Players"></aside>
 
   <section class="boardwrap">
+    <div class="actionbanner" id="actionbanner" hidden aria-live="polite"></div>
     <div class="minimap" id="minimap" aria-label="Clearing graph" role="img"></div>
     <div class="board" id="board" aria-label="Woodland map"></div>
     <div class="boardfoot" id="boardfoot"></div>
@@ -52,6 +64,11 @@
     <div class="panel">
       <div class="panel-head"><h2 id="actionhead">Actions</h2><span class="hint" id="pendhint"></span></div>
       <div class="actions" id="actions"></div>
+      <div class="rmninput">
+        <input id="rmnin" type="text" spellcheck="false" autocomplete="off" placeholder="custom RMN, e.g. C:build who=MC building=MC.b.saw at=C9" />
+        <button id="rmngo" class="btn" type="button">Apply</button>
+      </div>
+      <div class="rmnerr" id="rmnerr"></div>
     </div>
     <div class="panel">
       <div class="panel-head"><h2>Logs</h2><span class="hint">human-readable events</span></div>
@@ -66,7 +83,11 @@
 
 <footer class="sitefoot">
   <span>Unofficial fan project — not affiliated with Leder Games.</span>
-  <a href="https://github.com/Thanhphan1147/root-multiplayer" target="_blank" rel="noopener">root-multiplayer</a>
+  <span class="foot-actions">
+    <button id="exportrmn" class="btn ghost" type="button">Export RMN (unredacted)</button>
+    <a class="btn ghost" href="replay.html">Replay viewer</a>
+    <a href="https://github.com/Thanhphan1147/root-multiplayer" target="_blank" rel="noopener">root-multiplayer</a>
+  </span>
 </footer>
 
 <!-- Landing: pick a seat at one of the host's tables -->
@@ -108,6 +129,24 @@
   </div>
 </div>
 
-<script src="app.js?v=5"></script>
+<!-- Export: works on mobile (copy/share), not just download -->
+<div class="overlay" id="exportdlg" hidden>
+  <div class="card">
+    <h2>Export RMN</h2>
+    <p>Full, unredacted log. On mobile, copy it and paste it into the <a href="replay.html">replay viewer</a>.</p>
+    <textarea id="exporttext" rows="10" readonly spellcheck="false"></textarea>
+    <div class="exportrow">
+      <button id="exportcopy" class="btn" type="button">Copy</button>
+      <button id="exportdl" class="btn ghost" type="button">Download</button>
+      <button id="exportshare" class="btn ghost" type="button" hidden>Share</button>
+      <button id="exportclose" class="btn ghost" type="button">Close</button>
+    </div>
+    <div class="err" id="exportstatus"></div>
+  </div>
+</div>
+
+<script src="howto.js?v=1"></script>
+<script src="board.js?v=1"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>

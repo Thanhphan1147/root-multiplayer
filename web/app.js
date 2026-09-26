@@ -1,29 +1,9 @@
 "use strict";
 
-
-const PHASE = { S: "Setup", B: "Birdsong", D: "Daylight", E: "Evening" };
-
-// Autumn map: clearing positions (percent) and the 18 printed paths.
-const POS = {
-  C1: [13, 16], C2: [87, 16], C3: [87, 84], C4: [13, 84],
-  C5: [50, 10], C6: [90, 48], C7: [57, 82], C8: [29, 88],
-  C9: [11, 48], C10: [50, 33], C11: [70, 61], C12: [33, 55],
-};
-// Forest regions (centroids) and their adjacent clearings.
-const FORESTS = {
-  AutumnN:  [50, 19],
-  AutumnNW: [27, 38],
-  AutumnW:  [19, 62],
-  AutumnSW: [33, 77],
-  AutumnS:  [62, 70],
-  AutumnE:  [82, 64],
-  Witchwood:[66, 43],
-};
-const EDGES = [
-  ["C1","C5"],["C1","C9"],["C1","C10"],["C2","C5"],["C2","C6"],["C2","C10"],
-  ["C3","C6"],["C3","C7"],["C3","C11"],["C4","C8"],["C4","C9"],["C4","C12"],
-  ["C6","C11"],["C7","C8"],["C7","C12"],["C9","C12"],["C10","C12"],["C11","C12"],
-];
+// Board rendering, animation and the per-faction panels live in board.js (shared
+// with the replay viewer); the "How to play" sidebar lives in howto.js. This file
+// drives the correspondence transport: rooms, seats, polling/WebSocket, actions,
+// custom-RMN input and export.
 
 let token = localStorage.getItem("rmn-token") || "";
 let game = null; // full payload: { room, seat, you, ...snapshot }
@@ -36,6 +16,7 @@ let ws = null;
 let wsLive = false;
 let wsConnected = false;
 let wsRetry = 0;
+let rmnBusy = false;
 
 function authHeaders(extra) {
   const h = Object.assign({}, extra || {});
@@ -70,67 +51,28 @@ async function fetchState(force) {
   return true;
 }
 
+// Apply a legal action, animating the move/battle/build when we can. The
+// animation helper reads and writes the global `game`, so we hand it the
+// pre-action payload plus the action that was chosen.
 async function doAction(id) {
+  const pre = game;
+  const a = ((pre && pre.legal) || []).find(x => x.id === id) || { id };
   const r = await api("/api/action", { method: "POST", body: JSON.stringify({ id }) });
-  if (r.data && !r.data.error) { game = r.data; etag = r.etag; viewer = game.you || viewer; render(); }
-  else if (r.data && r.data.error) { toast(r.data.error); }
+  if (r.data && !r.data.error) {
+    const post = r.data;
+    etag = r.etag;
+    viewer = post.you || viewer;
+    if (typeof animateAction === "function") { await animateAction(pre, a, post); }
+    else { game = post; render(); }
+  } else if (r.data && r.data.error) {
+    toast(r.data.error);
+  }
 }
 
 async function pickFaction(faction) {
   const r = await api("/api/faction", { method: "POST", body: JSON.stringify({ faction }) });
   if (r.data && !r.data.error) { game = r.data; etag = r.etag; viewer = game.you || viewer; render(); }
   else if (r.data && r.data.error) { toast(r.data.error); }
-}
-
-function toast(msg) {
-  const el = document.getElementById("pendhint");
-  if (el) { el.textContent = msg; setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 4000); }
-}
-
-// Who must act now: the pending player when the engine is waiting on a deferred
-// choice (battle hits, discards, field hospitals), otherwise the turn player.
-const PENDING_LABELS = {
-  "battle-hits": "assigning battle hits",
-  "battle-ambush": "ambush",
-  "battle-effects": "battle effects",
-  "discard-down": "discarding cards",
-  "field-hospitals": "field hospitals",
-};
-
-function activeFaction(g) {
-  if (g.pending && g.pending.Player) return g.pending.Player;
-  return g.current;
-}
-
-function actionLabel(g) {
-  if (g.setupMode) return "setup";
-  if (g.pending && PENDING_LABELS[g.pending.Kind]) return PENDING_LABELS[g.pending.Kind];
-  if (g.battle) return "battle · " + (g.battle.StepName || "");
-  return (PHASE[g.phase] || g.phase || "").toLowerCase();
-}
-
-function renderTurnBanner(g) {
-  const el = document.getElementById("turnbanner");
-  if (!el) return;
-  if (g.winner && g.winner.length) {
-    el.hidden = false;
-    el.className = "turnbanner win";
-    el.innerHTML = `<span class="tb-who">Game over</span><span class="tb-label">${g.winner.join(" + ")} won</span>`;
-    return;
-  }
-  const actor = activeFaction(g);
-  if (!actor) { el.hidden = true; return; }
-  const yours = actor === viewer;
-  el.hidden = false;
-  el.className = "turnbanner " + actor + (yours ? " your" : "");
-  el.innerHTML =
-    `<span class="tb-who">${yours ? "Your turn" : actor + "'s turn"}</span>` +
-    `<span class="tb-label">${actionLabel(g)}</span>`;
-}
-
-function hideTurnBanner() {
-  const el = document.getElementById("turnbanner");
-  if (el) el.hidden = true;
 }
 
 function render() {
@@ -158,6 +100,7 @@ function render() {
   renderActions(g);
   renderLog(g);
   renderRMN(g);
+  if (howtoIsOpen()) howtoRender(howtoFaction());
 }
 
 function renderLobby(room) {
@@ -192,201 +135,6 @@ function hideOverlays() {
   for (const x of ["landing", "lobby"]) {
     document.getElementById(x).hidden = true;
   }
-}
-
-function renderPlayers(g) {
-  const el = document.getElementById("players");
-  el.innerHTML = "";
-  const actor = activeFaction(g);
-  for (const f of g.order) {
-    const p = g.players[f];
-    const div = document.createElement("div");
-    div.className = "pcard " + f + (f === actor ? " current" : "");
-    let extra = "";
-    if (f === "MC") {
-      // Wood on the board (spendable) vs the off-board supply reserve.
-      const woodBoard = Object.values(g.clearings).reduce((n, c) => n + (c.Wood || 0), 0);
-      extra =
-        `<div class="row"><span>wood (board)</span><span>${woodBoard}</span></div>` +
-        `<div class="row"><span>wood (supply)</span><span>${p.WoodSupply}</span></div>` +
-        `<div class="row"><span>buildings left</span><span>${p.Sawmills}/${p.Workshops}/${p.Recruiters}</span></div>` +
-        `<div class="row"><span>keep</span><span>${p.KeepClearing}</span></div>`;
-    } else if (f === "ED") {
-      extra = `<div class="row"><span>leader</span><span>${p.Leader}</span></div>` +
-        `<div class="row"><span>roosts</span><span>${countRoosts(g, "ED")}</span></div>`;
-      const dec = p.Decree || {};
-      for (const col of ["RECRUIT", "MOVE", "BATTLE", "BUILD"]) {
-        const cards = (dec[col] || []).map(cardLabel).join(" ");
-        if (cards) extra += `<div class="row"><span>${col.slice(0, 3)}</span><span class="cards">${cards}</span></div>`;
-      }
-    } else if (f === "WA") {
-      extra = `<div class="row"><span>officers</span><span>${p.Officers}</span></div>` +
-        `<div class="row"><span>supporters</span><span class="cards">${(p.Supporters || []).map(cardLabel).join(" ")}</span></div>`;
-    } else if (f === "VB") {
-      extra = `<div class="row"><span>character</span><span>${p.Character}</span></div>` +
-        `<div class="row"><span>at</span><span>${p.Pawn}</span></div>` +
-        `<div class="row"><span>items</span><span class="cards">${itemList(p)}</span></div>`;
-      const rel = p.Relationships || {};
-      const tags = Object.entries(rel).map(([k, v]) => `<span class="tag ${v === "hostile" ? "hostile" : ""}">${k}:${v}</span>`).join("");
-      extra += `<div class="tags">${tags}</div>`;
-    }
-    div.innerHTML =
-      `<div class="phead"><span class="f">${f}${game.you === f ? " · you" : ""}</span><span class="vp">${p.VP} VP</span></div>` +
-      `<div class="pbody">${extra}` +
-      `<div class="row"><span>crafted</span><span>${(p.Crafted || []).map(cardLabel).join(" ") || "—"}</span></div>` +
-      `</div>`;
-    div.append(renderHand(p));
-    el.append(div);
-  }
-}
-
-function renderHand(p) {
-  const wrap = document.createElement("div");
-  wrap.className = "hand";
-  const hand = p.Hand || [];
-  if (hand.length === 0) {
-    wrap.innerHTML = '<div class="hempty">no cards</div>';
-    return wrap;
-  }
-  for (const id of hand) {
-    if (id === "??") {
-      const h = document.createElement("div");
-      h.className = "hidden-card";
-      h.textContent = "hidden card";
-      wrap.append(h);
-      continue;
-    }
-    const info = (game.cards && game.cards[id]) || { name: id, suit: "B", desc: "" };
-    const c = document.createElement("div");
-    c.className = "hcard suit-" + (info.suit || "B");
-    c.innerHTML =
-      `<div class="hname">${info.name}<span class="hid">${id}</span></div>` +
-      `<div class="hcost">${info.cost ? "craft: " + info.cost : (info.kind === "ambush" ? "battle" : info.kind)}</div>` +
-      `<div class="hdesc">${info.desc}</div>`;
-    wrap.append(c);
-  }
-  return wrap;
-}
-
-function countRoosts(g, f) {
-  let n = 0;
-  for (const c of Object.values(g.clearings)) {
-    for (const b of (c.Buildings || [])) if (b.Owner === f && b.Type === "roost") n++;
-  }
-  return n;
-}
-
-function itemList(p) {
-  const out = [];
-  for (const [id, it] of Object.entries(p.Items || {})) {
-    let s = it.Type;
-    if (it.Zone === "track") s += "↑";
-    if (!it.FaceUp) s += "×";
-    if (it.Damaged) s += "✗";
-    out.push(s);
-  }
-  return out.join(" ");
-}
-
-function cardLabel(id) {
-  if (id === "VIZIER") return "Viz";
-  if (/^[FRMB]\d\d$/.test(id)) return id;
-  return id;
-}
-
-function renderBoard(g) {
-  const el = document.getElementById("board");
-  el.innerHTML = "";
-
-  // Roads (SVG underlay).
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("class", "roads");
-  svg.setAttribute("viewBox", "0 0 100 100");
-  svg.setAttribute("preserveAspectRatio", "none");
-  for (const [a, b] of EDGES) {
-    if (!POS[a] || !POS[b]) continue;
-    for (const cls of ["casing", "road"]) {
-      const ln = document.createElementNS(NS, "line");
-      ln.setAttribute("x1", POS[a][0]); ln.setAttribute("y1", POS[a][1]);
-      ln.setAttribute("x2", POS[b][0]); ln.setAttribute("y2", POS[b][1]);
-      ln.setAttribute("class", cls);
-      ln.dataset.c1 = a; ln.dataset.c2 = b;
-      svg.append(ln);
-    }
-  }
-  el.append(svg);
-
-  // Forest region labels.
-  for (const [name, pos] of Object.entries(FORESTS)) {
-    const f = document.createElement("div");
-    f.className = "forest";
-    f.style.left = pos[0] + "%";
-    f.style.top = pos[1] + "%";
-    f.textContent = name;
-    el.append(f);
-  }
-
-  const ids = Object.keys(g.clearings).sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
-  const hl = new Set((g.legal || []).map(a => a.clearing || a.to || a.from).filter(Boolean));
-  const vbPawn = (g.players && g.players.VB) ? g.players.VB.Pawn : "";
-
-  for (const id of ids) {
-    const c = g.clearings[id];
-    const div = document.createElement("div");
-    div.className = "clearing" + (hl.has(id) ? " hl" : "");
-    const [x, y] = POS[id] || [50, 50];
-    div.style.left = x + "%";
-    div.style.top = y + "%";
-    div.dataset.clearing = id;
-    div.onmouseenter = () => highlightRoads(svg, id, true);
-    div.onmouseleave = () => highlightRoads(svg, id, false);
-
-    let chips = "";
-    const order = ["MC", "ED", "WA", "VB"];
-    for (const f of order) {
-      const n = (c.Warriors || {})[f];
-      if (n) chips += `<span class="chip ${f}">${f}×${n}</span>`;
-    }
-    for (const b of (c.Buildings || [])) chips += `<span class="chip ${b.Owner}">${b.Type}</span>`;
-    for (const t of (c.Tokens || [])) chips += `<span class="chip ${t.Owner}">${t.Type}</span>`;
-    if (c.Sympathy) chips += `<span class="chip WA">sympathy</span>`;
-    if (vbPawn === id) chips += `<span class="chip VB">pawn</span>`;
-    const wood = c.Wood ? `<span class="wood">wood ${c.Wood}</span>` : "";
-    const slots = c.Slots || 0;
-    const used = (c.Buildings || []).length;
-    const hasRuin = c.Ruin ? 1 : 0;
-    const free = Math.max(0, slots - used - hasRuin);
-    let pips = "";
-    for (let i = 0; i < used; i++) pips += '<span class="slot used"></span>';
-    for (let i = 0; i < hasRuin; i++) pips += '<span class="slot ruinslot"></span>';
-    for (let i = 0; i < free; i++) pips += '<span class="slot free"></span>';
-    const ruinLabel = c.Ruin ? `<span class="ruin">ruin ${(c.RuinItem || "").replace(/^i\./, "")}</span>` : "";
-    const slotRow = (slots || hasRuin)
-      ? `<div class="slots" title="building slots: ${free} free of ${slots}"><span class="slotpips">${pips}</span>` +
-        `<span class="slotnum">${free}/${slots}</span>${ruinLabel}</div>`
-      : "";
-    div.innerHTML =
-      `<div class="cid"><span>${id}</span><span class="suit ${c.Suit}">${c.Suit}</span></div>` +
-      `<div class="crowd">${chips}${wood}</div>${slotRow}`;
-    el.append(div);
-  }
-  // Vagabond pawn in a forest.
-  if (vbPawn && FORESTS[vbPawn]) {
-    const pos = FORESTS[vbPawn];
-    const pd = document.createElement("div");
-    pd.className = "pawn";
-    pd.style.left = pos[0] + "%";
-    pd.style.top = (pos[1] + 8) + "%";
-    pd.textContent = "VB pawn";
-    pd.title = "Vagabond in " + vbPawn;
-    el.append(pd);
-  }
-
-  document.getElementById("boardfoot").textContent =
-    "roads: " + EDGES.map(([a, b]) => a + "–" + b).join("  ") +
-    "   ·   forests: " + Object.keys(FORESTS).join(", ") +
-    (vbPawn ? "   ·   VB pawn: " + vbPawn : "");
 }
 
 // Compact graph view (shown on small viewports where the board becomes a table).
@@ -453,14 +201,6 @@ function renderMinimap(g) {
   el.append(svg);
 }
 
-function highlightRoads(svg, id, on) {
-  for (const ln of svg.querySelectorAll("line")) {
-    if (ln.dataset.c1 === id || ln.dataset.c2 === id) {
-      ln.classList.toggle("hot", on);
-    }
-  }
-}
-
 function renderActions(g) {
   const el = document.getElementById("actions");
   el.innerHTML = "";
@@ -523,20 +263,6 @@ function renderActions(g) {
   }
 }
 
-function renderLog(g) {
-  const el = document.getElementById("log");
-  el.innerHTML = "";
-  const entries = g.log || [];
-  for (const e of entries.slice(-120)) {
-    const li = document.createElement("li");
-    li.className = (e.kind || "") + (e.kind === "battle" || e.kind === "turmoil" || e.kind === "ambush" ? " battle" : "");
-    li.innerHTML = `<span class="seq">${e.seq}</span><span>${e.round}.${e.phase}</span>` +
-      `<span class="act ${e.actor}">${e.actor}</span><span>${e.text}</span>`;
-    el.append(li);
-  }
-  el.scrollTop = el.scrollHeight;
-}
-
 function renderRMN(g) {
   const el = document.getElementById("rmn");
   if (!el) return;
@@ -553,6 +279,115 @@ function renderRMN(g) {
   }
   el.scrollTop = el.scrollHeight;
 }
+
+// --- How to play ---
+const howtoFaction = () => (game && (game.you || activeFaction(game))) || "";
+document.getElementById("togglehowto").onclick = () => howtoToggle(howtoFaction());
+document.getElementById("howtoclose").onclick = howtoClose;
+document.getElementById("howtobackdrop").onclick = howtoClose;
+
+// --- Custom RMN input ---
+async function applyCustomRMN() {
+  const inp = document.getElementById("rmnin");
+  const errEl = document.getElementById("rmnerr");
+  const text = inp.value.trim();
+  if (!text || rmnBusy) return;
+  if (!game || !game.room || !game.room.started) { errEl.textContent = "the game has not started"; return; }
+  rmnBusy = true;
+  errEl.textContent = "";
+  try {
+    const r = await api("/api/rmn", { method: "POST", body: JSON.stringify({ line: text }) });
+    if (r.data && !r.data.error) {
+      inp.value = "";
+      const post = r.data;
+      etag = r.etag;
+      viewer = post.you || viewer;
+      game = post;
+      render();
+    } else {
+      errEl.textContent = (r.data && r.data.error) || "could not apply RMN";
+    }
+  } catch (e) {
+    errEl.textContent = "network error";
+  } finally {
+    rmnBusy = false;
+  }
+}
+document.getElementById("rmngo").onclick = applyCustomRMN;
+document.getElementById("rmnin").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); applyCustomRMN(); }
+});
+
+// --- Export the unredacted RMN log ---
+const exportDlg = document.getElementById("exportdlg");
+const exportText = document.getElementById("exporttext");
+const exportStatus = document.getElementById("exportstatus");
+const exportShare = document.getElementById("exportshare");
+
+document.getElementById("exportrmn").onclick = async () => {
+  if (!token) return;
+  exportStatus.textContent = "";
+  exportText.value = "loading…";
+  exportDlg.hidden = false;
+  exportShare.hidden = !(navigator.canShare && window.File);
+  try {
+    const r = await fetch("/api/export", { headers: authHeaders() });
+    exportText.value = r.ok ? await r.text() : "";
+    if (!r.ok) exportStatus.textContent = "Export failed (" + r.status + ").";
+  } catch (e) {
+    exportText.value = "";
+    exportStatus.textContent = "Export failed.";
+  }
+  exportText.focus();
+};
+document.getElementById("exportclose").onclick = () => { exportDlg.hidden = true; };
+
+document.getElementById("exportcopy").onclick = async () => {
+  const text = exportText.value;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      exportText.focus();
+      exportText.select();
+      document.execCommand("copy");
+    }
+    exportStatus.textContent = "Copied " + text.length + " characters.";
+  } catch (e) {
+    exportText.focus();
+    exportText.select();
+    exportStatus.textContent = "Copy failed — select the text and copy manually.";
+  }
+};
+
+document.getElementById("exportdl").onclick = () => {
+  try {
+    const blob = new Blob([exportText.value], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "root.rmn";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    exportStatus.textContent = "Download started (if your browser allows it).";
+  } catch (e) {
+    exportStatus.textContent = "Download not supported here — use Copy.";
+  }
+};
+
+exportShare.onclick = async () => {
+  const text = exportText.value;
+  try {
+    const file = new File([text], "root.rmn", { type: "text/plain" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: "ROOT RMN" });
+    } else {
+      await navigator.share({ title: "ROOT RMN", text });
+    }
+  } catch (e) { /* user cancelled */ }
+};
 
 // --- Autofetch ---
 const autofetchBox = document.getElementById("autofetch");
@@ -840,7 +675,7 @@ if (playersToggle) {
 if (drawerBackdrop) {
   drawerBackdrop.onclick = () => setDrawer(false);
 }
-window.addEventListener("keydown", e => { if (e.key === "Escape") setDrawer(false); });
+window.addEventListener("keydown", e => { if (e.key === "Escape") { setDrawer(false); howtoClose(); } });
 
 // --- Boot ---
 (async function boot() {
