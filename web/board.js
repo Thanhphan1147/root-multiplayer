@@ -122,8 +122,13 @@ function renderPlayers(g) {
       extra += vbQuestsHTML(g, p);
       extra += `<div class="tags">${tags}</div>`;
     }
+    // In a coalition, the Vagabond shares its partner's victory condition and no
+    // longer scores, so show the coalition instead of a VP total.
+    const coal = f === "VB" && p.Coalition;
+    const joinedByVB = (g.players && g.players.VB && g.players.VB.Coalition === f);
     div.innerHTML =
-      `<div class="phead"><span class="f">${f}${game.you === f ? " · you" : ""}</span><span class="vp">${p.VP} VP</span></div>` +
+      `<div class="phead"><span class="f">${f}${game.you === f ? " · you" : ""}</span>` +
+      `<span class="vp">${coal ? "coalition · " + p.Coalition : (joinedByVB ? "coalition · VB" : p.VP + " VP")}</span></div>` +
       `<div class="pbody">${extra}` +
       `<div class="row"><span>crafted</span><span>${(p.Crafted || []).map(cardLabel).join(" ") || "—"}</span></div>` +
       `<div class="row"><span>crafted items</span><span>${craftedItems(p)}</span></div>` +
@@ -227,6 +232,31 @@ function craftedItems(p) {
   return items.length ? items.join(" ") : "—";
 }
 
+// renderDominance draws the public dominance zone: every dominance card that is
+// on the table (played, or spent/discarded) with the faction that activated it.
+// Everyone may swap one of these for a matching card during Birdsong; the swap
+// actions appear in the Actions panel.
+function renderDominance(g) {
+  let el = document.getElementById("dominance");
+  if (!el) {
+    const wrap = document.querySelector(".boardwrap");
+    if (!wrap) return;
+    el = document.createElement("div");
+    el.id = "dominance";
+    el.className = "dominance";
+    wrap.append(el);
+  }
+  const cards = g.dominance || [];
+  if (!cards.length) { el.hidden = true; el.innerHTML = ""; return; }
+  const active = g.dominanceActive || {};
+  el.hidden = false;
+  el.innerHTML = '<span class="dlabel">Dominance</span>' + cards.map((id) => {
+    const info = (g.cards && g.cards[id]) || { name: id, suit: "B" };
+    const by = active[id] ? ` <span class="downer">${active[id]}</span>` : "";
+    return `<span class="dcard suit-${info.suit}">${info.name}${by}</span>`;
+  }).join("");
+}
+
 function renderBoard(g) {
   const el = document.getElementById("board");
   if (!el) return;
@@ -312,6 +342,8 @@ function renderBoard(g) {
     pd.textContent = "VB pawn";
     el.append(pd);
   }
+
+  renderDominance(g);
 
   const foot = document.getElementById("boardfoot");
   if (foot) {

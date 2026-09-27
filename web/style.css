@@ -667,3 +667,14 @@ button:focus-visible, a:focus-visible, .clearing:focus-visible {
 
 #logoutmodal { z-index: 140; }
 #logoutmodal code { display: block; max-height: 8rem; overflow: auto; word-break: break-all; }
+
+/* Public dominance zone: played/spent dominance cards on the table. */
+.dominance { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; padding: 0.4rem 0.1rem 0; font-family: var(--mono); font-size: 0.62rem; }
+.dominance[hidden] { display: none; }
+.dominance .dlabel { color: var(--ink-soft); letter-spacing: 0.05em; text-transform: uppercase; }
+.dominance .dcard { border: 1px solid var(--line-strong); border-left: 4px solid #5b6472; border-radius: var(--radius); background: var(--paper); padding: 0.1rem 0.35rem; color: var(--ink); }
+.dominance .dcard.suit-F { border-left-color: var(--mc); }
+.dominance .dcard.suit-R { border-left-color: var(--vb); }
+.dominance .dcard.suit-M { border-left-color: #5b6472; }
+.dominance .dcard.suit-B { border-left-color: var(--ed); }
+.dominance .downer { color: var(--crimson); font-weight: 700; }
