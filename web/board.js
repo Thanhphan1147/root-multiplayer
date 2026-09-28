@@ -324,7 +324,10 @@ function renderBoard(g) {
       if (n) chips += `<span class="chip ${f}">${f}×${n}</span>`;
     }
     for (const b of (c.Buildings || [])) chips += `<span class="chip ${b.Owner}">${b.Type}</span>`;
-    for (const t of (c.Tokens || [])) chips += `<span class="chip ${t.Owner}">${t.Type}</span>`;
+    for (const t of (c.Tokens || [])) {
+      if (t.Type === "sympathy") continue; // shown via c.Sympathy below
+      chips += `<span class="chip ${t.Owner}">${t.Type}</span>`;
+    }
     if (c.Sympathy) chips += `<span class="chip WA">sympathy</span>`;
     if (vbPawn === id) chips += `<span class="chip VB">pawn</span>`;
     const wood = c.Wood ? `<span class="wood">wood ${c.Wood}</span>` : "";
