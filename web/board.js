@@ -122,13 +122,21 @@ function renderPlayers(g) {
       extra += vbQuestsHTML(g, p);
       extra += `<div class="tags">${tags}</div>`;
     }
-    // In a coalition, the Vagabond shares its partner's victory condition and no
-    // longer scores, so show the coalition instead of a VP total.
-    const coal = f === "VB" && p.Coalition;
-    const joinedByVB = (g.players && g.players.VB && g.players.VB.Coalition === f);
+    // A coalitioned Vagabond shares its partner's victory condition and no
+    // longer scores, so show the coalition and the partner's VP (the shared
+    // goal). The partner still scores, so show its own VP plus a coalition tag.
+    const coalPartner = f === "VB" && p.Coalition ? p.Coalition : "";
+    const partner = coalPartner && g.players ? g.players[coalPartner] : null;
+    const joinedByVB = !!(g.players && g.players.VB && g.players.VB.Coalition === f);
+    let vpText = p.VP + " VP";
+    if (coalPartner) {
+      vpText = `coalition · ${coalPartner} · ${partner ? partner.VP : 0} VP`;
+    } else if (joinedByVB) {
+      vpText = `${p.VP} VP · coalition VB`;
+    }
     div.innerHTML =
       `<div class="phead"><span class="f">${f}${game.you === f ? " · you" : ""}</span>` +
-      `<span class="vp">${coal ? "coalition · " + p.Coalition : (joinedByVB ? "coalition · VB" : p.VP + " VP")}</span></div>` +
+      `<span class="vp">${vpText}</span></div>` +
       `<div class="pbody">${extra}` +
       `<div class="row"><span>crafted</span><span>${(p.Crafted || []).map(cardLabel).join(" ") || "—"}</span></div>` +
       `<div class="row"><span>crafted items</span><span>${craftedItems(p)}</span></div>` +
